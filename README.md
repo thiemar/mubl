@@ -1,2 +1,322 @@
-# mubl
-µBL is a scalable bootloader targeting STM32F0 through H7 parts with support for DFU via DroneCAN or multiple serial protocols
+# µBL
+
+A small, freestanding C bootloader for STM32 with firmware update over **DroneCAN**, the
+**PX4/ArduPilot serial bootloader protocol** and **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 are
+supported as shipped; other parts are added with a board file and, where the peripherals differ, a
+family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
+[sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
+
+Status: everything above the register level is tested on a host simulation (150 tests, including
+ArduPilot's `uploader.py`, sfwa-dronecan's `FirmwareUpdater` and Spektrum's reference SRXL2 code,
+power loss injected at every flash operation of an update, and sanitizer-checked fuzzing of all
+three links).  The STM32 code builds for every example board and its register definitions are
+checked against ST's CMSIS headers, but **it has not yet run on hardware**.
+
+## Contents
+
+- [How it boots](#how-it-boots)
+- [Links: detection and priority](#links-detection-and-priority)
+- [Updating safely](#updating-safely)
+- [DroneCAN](#dronecan) · [Serial](#serial) · [SRXL2](#srxl2)
+- [Images](#images) · [Handoff](#handoff)
+- [Boards and configuration](#boards-and-configuration) · [Adding a part](#adding-a-part)
+- [Building](#building) · [Bring-up](#bring-up-on-a-new-board) · [Size](#size) · [Testing](#testing) · [Limitations](#limitations)
+
+## How it boots
+
+After reset µBL reads the handoff the application may have left, checks the application, starts
+its links and polls them.  It starts the application `MUBL_BOOT_DELAY_MS` (1 s) after reset unless:
+
+| Stays because | |
+| --- | --- |
+| no valid application | first word erased; initial SP not in this board's RAM or reset vector not Thumb code in the application region; or a descriptor that fails (size, CRC, board ID, reset vector outside the image it describes) |
+| the application asked | handoff request: native, AP_Periph's, or PX4's (below) |
+| hold pin | `MUBL_HOLD_PIN` asserted at reset |
+| a host started using a link | serial `GET_SYNC` + identify, any SRXL2 update packet, DroneCAN BeginFirmwareUpdate (and GetNodeInfo with `MUBL_DC_HOLD_ON_GETNODEINFO`) |
+| boot loop | the application did not confirm `MUBL_MAX_BOOT_ATTEMPTS` boots in a row |
+
+Traffic alone never holds the bootloader: on an aircraft the CAN bus and the SRXL2 receiver are
+always talking, and a valid application must still start on time.  An update in progress always
+holds it.
+
+Leaving: links stop, peripherals and the GPIO ports used are reset, clocks return to the reset
+configuration, the handoff block is written, then VTOR (or on Cortex-M0, a copy of the vectors to
+SRAM mapped at address 0), MSP and a jump.  See [app/README.md](app/README.md) for what the
+application can rely on.
+
+## Links: detection and priority
+
+A board lists its links in `MUBL_LINK_PRIORITY`, highest first.  At start every link listens at
+once.  The serial protocol says nothing until a host has synced; SRXL2 announces itself only as the
+specification requires; DroneCAN transmits nothing until it knows the bitrate (configured, handed
+off, or detected from traffic it has heard).
+
+| Link | Detected when |
+| --- | --- |
+| DroneCAN | a frame is received.  Without a configured or handed-off bitrate the controller listens silently (no ACKs) at 1M, 500k, 250k, 125k in turn, moving on at the first protocol error or after `MUBL_CAN_AUTOBAUD_DWELL_MS` of silence |
+| serial | a well-formed `GET_SYNC` arrives |
+| SRXL2 | a packet with a valid CRC arrives |
+
+Priority decides:
+
+- **who speaks first on a shared UART.**  Serial and SRXL2 may share one port (typically the
+  single-wire SRXL2 line of an ESC or servo, also used for bench flashing).  Both parsers see every
+  byte until one decodes a valid frame and claims the port.  Before that only the higher-priority
+  protocol may transmit: with SRXL2 first the device announces itself; with serial first it stays
+  silent until polled.  If the two use different baud rates the port alternates between them every
+  `MUBL_UART_SLICE_MS` (250 ms), in priority order.
+- **which links survive detection** with `MUBL_LINK_EXCLUSIVE`: the first link to find a peer stops
+  every link of lower priority (higher ones keep listening).  Without it every link stays up and
+  the first to start an update owns it; the others answer "busy" until it ends.
+- **start-up order** and poll order.
+
+`MUBL_DETECT_EXTEND_MS` optionally lengthens the boot delay once when a link is first detected.
+An application can also name one link in its handoff request, which then runs alone with the
+parameters given (bitrate, node ID, baud rate, SRXL2 device ID).
+
+## Updating safely
+
+All links drive one update engine (`src/update.c`):
+
+- **Sequential writes, erase on demand.**  Each sector is erased when the first byte for it arrives
+  (blank sectors are skipped), so links keep running between erases and small images do not pay for
+  a whole-region erase.  The first sector is erased when the update begins, which makes the old
+  application unbootable immediately.
+- **First block last.**  The first `max(8, programming unit)` bytes (initial SP and reset vector)
+  are held in RAM.  When the image is complete, sectors after it that are not blank are erased, the
+  image is validated with the held bytes substituted, and only then are they programmed, last unit
+  first, so the initial SP is the last thing written.  Every programmed unit is read back.
+- **Programming granule** per family: half-words (F0/F3), words (F4), 256-bit ECC flash words (H7).
+- **ECC.**  On H7 an interrupted erase or program can leave flash that faults when read.  Image
+  checks and CRCs run under `hal_guarded`, which turns that bus fault into "invalid image" instead of
+  a reset loop.
+
+The simulation cuts power at each flash operation of an update over a previous image, leaving the
+operation half done (random bits, ECC damage): every one of 12,936 operations on the F0 geometry,
+11,255 on F4 and 1,408 on H7 (`MUBL_EXHAUSTIVE=1`; the default run takes 400 per geometry).  In
+every case the bootloader afterwards either stays or starts a byte-identical complete image, never
+reads damaged flash outside `hal_guarded`, and a fresh update succeeds.
+
+## DroneCAN
+
+Built on sfwa-dronecan's bootloader profile (`dc_tiny`: one reassembly at a time, no queue, no C
+library), generated into `src/dronecan/{classic,fd}` by `tools/gen_dronecan.sh`.
+
+- **Node ID**: from the handoff, else `MUBL_CAN_NODE_ID`, else dynamic allocation following rules
+  A–E of `uavcan.protocol.dynamic_node_id.Allocation` (randomised request period and follow-up
+  delay, preferred ID `MUBL_CAN_PREFERRED_NODE_ID`).
+- **Services**: NodeStatus at 1 Hz (MAINTENANCE, SOFTWARE_UPDATE while updating; health WARNING
+  without an application, ERROR after a failed update; vendor status = application check result |
+  stay reason << 8), GetNodeInfo (version, VCS commit and image CRC from the descriptor; hardware
+  version from the board ID; 16-byte unique ID), RestartNode, BeginFirmwareUpdate.
+- **Update**: `uavcan.protocol.file.Read`, 256 bytes at a time, one request outstanding, 1 s timeout,
+  5 retries; a short read ends the file.  The node boots the image if it validates, otherwise stays
+  with health ERROR.  Optional LogMessage on start, success and failure (`MUBL_DC_LOG`).
+- **CAN FD** on H7 (`MUBL_CAN_FD`, optional bit-rate switching with `MUBL_CAN_FD_DATA_BITRATE`, with
+  transmitter delay compensation).  FDCAN recovers from bus-off itself; bxCAN uses automatic bus-off
+  recovery.
+- One interface; hardware filters pass only service frames addressed to the node once it has an ID.
+
+Interoperability: tested against sfwa-dronecan's pydronecan-compatible `CentralizedServer`,
+`NodeMonitor`, `FileServer` and `FirmwareUpdater` on its virtual bus.
+
+## Serial
+
+The PX4/ArduPilot bootloader protocol, revision 5, as `uploader.py`, QGroundControl and Mission
+Planner use it: `GET_SYNC`, `GET_DEVICE` (BL_REV 5, BOARD_ID, BOARD_REV, FW_SIZE, VEC_AREA,
+EXTF_SIZE 0), `CHIP_ERASE`, `PROG_MULTI` (≤ 252 bytes), `GET_CRC`, `GET_OTP`, `GET_SN`, `GET_CHIP`,
+`GET_CHIP_DES`, `GET_VERSION`, `SET_BAUD`, `BOOT`.  Erase and program need sync and identify first.
+`GET_CRC` covers the region as it will be after `BOOT`; `BOOT` validates the image and answers
+FAILED if it does not pass.  ArduPilot's `uploader.py` runs against it unmodified (on a dedicated
+port and on a port shared with SRXL2).
+
+## SRXL2
+
+As a slave device per the Spektrum SRXL2 specification (Rev K): 115200 baud single-wire
+half-duplex, listen 50 ms after start, announce with a Handshake every 50 ms for 200 ms if the unit
+ID nibble is 0, answer Handshakes addressed to the device, switch to 400000 baud on the master's
+broadcast Handshake, return to 115200 and handshake again after 50 ms of master silence.  Replies
+wait `MUBL_SRXL2_REPLY_DELAY_US` (two character times).  The device ID is `MUBL_SRXL2_DEVICE_ID` or
+from the handoff.
+
+The specification has no firmware-update packet, so µBL adds one (packet type
+`MUBL_SRXL2_DFU_TYPE`, 0xB0), master-driven like everything on the bus:
+
+```
+master -> device:  A6 B0 len  dest src op seq  data...            CRC16 (XMODEM, big endian)
+device -> master:  A6 B0 len  master device op|0x80 seq  status data...  CRC16
+op 1 INFO                  -> protocol, app status/format, board ID, region size, versions, VCS, size, UID
+op 2 BEGIN  size:4         erases the first sector
+op 3 WRITE  offset:4 data  (1-64 bytes) -> next offset:4
+op 4 FINISH size:4 crc:4   zlib CRC-32 of the image; validate, make bootable -> app status
+op 5 BOOT
+```
+
+A request repeating the previous `src, op, seq` gets the previous reply without being executed
+again.  `tools/mubl_srxl2.py` is the host side (bus master over a USB-serial adapter wired for
+half duplex).
+
+The handshake is checked differentially against Spektrum's reference implementation (which is
+public only for slaves): both receive the same master traffic in lockstep and must answer it
+byte-for-byte alike.  They differ only where the reference's behaviour depends on how often its host
+calls `srxlRun`: it keeps announcing until polled (µBL stops after 200 ms, as the spec allows), and
+it answers a master's first poll only on the second.
+
+## Images
+
+`tools/mubl_image.py stamp` fills a descriptor's size and CRCs; `apj` makes a `.apj` for
+`uploader.py`.  `MUBL_IMAGE_FORMATS` chooses what boots:
+
+| Format | Signature | Check |
+| --- | --- | --- |
+| `MUBL_IMG_AP` | `40 a2 e4 f1 64 68 91 06` | ArduPilot/PX4 unsigned: CRC-32 up to the signature and from `version_major` to the end, `board_id == MUBL_BOARD_ID` |
+| `MUBL_IMG_LEGACY` | `APDesc00` | thiemar/early PX4: CRC-64-WE of the whole image with the CRC field zero |
+| `MUBL_IMG_RAW` | none | initial SP and reset vector only |
+
+Every format also needs the initial SP inside RAM the board has: its own `MUBL_RAM_BASE`/`SIZE` or
+a bank listed in `MUBL_STACK_RAM` (CCM, AXI SRAM, SRAM1-4; the example boards list theirs).  With
+a descriptor the reset vector must also lie inside the image it describes, not just the region.
+
+CRCs, by the instruction counts of the generated loops (not measured):
+
+| | CRC-32 | CRC-64 (legacy format, PX4 handoff) |
+| --- | --- | --- |
+| F3, H7 | CRC unit (`MUBL_HW_CRC32`): words fed with each byte's bits reversed, result reversed; about 3 cycles a byte | 16-entry table |
+| F4 | software, 16-entry table (its CRC unit cannot do the reflected CRC-32) | 16-entry table |
+| F0 | software, bit by bit: about 90 cycles a byte, so about 45 ms for a 24 KB image at 48 MHz | bit by bit |
+
+F0 trades boot time for size: no tables (`MUBL_CRC32_TABLE`, `MUBL_CRC64_TABLE`) and no CRC-unit
+driver, which there would cost more than the 50-byte loop it replaces.  `MUBL_HW_CRC32` turns the
+driver on for an F0 board that wants the faster check.
+
+The descriptor is found by scanning from offset 8, word aligned; its size is bounded by the
+application region before anything is read.  A raw image is protected against interrupted updates
+only by the first word being written last: on a part that programs a word or more at a time a power
+failure during that one write could, in principle, leave a plausible but wrong stack pointer.  Use a
+descriptor where that matters.  Signed images are not supported.
+
+## Handoff
+
+`MUBL_HANDOFF_SIZE` (256) bytes of RAM at `MUBL_HANDOFF_ADDR`, CRC-protected with a magic for each
+direction and cleared as soon as it is read, so a later reset cannot replay it.
+
+- **Application → bootloader**: stay; use one link; CAN node ID, bitrate, file server and path
+  (DroneCAN then starts reading immediately); UART baud rate; SRXL2 device ID.
+- **Bootloader → application**: the link used, CAN node ID and bitrate, baud rate, SRXL2 ID and the
+  number of unconfirmed boots.  The application confirms a good boot by clearing the magic.
+- **AP_Periph** (`MUBL_COMPAT_AP_PERIPH`): `app_bootloader_comms` at the start of RAM is honoured.
+- **PX4/thiemar** (`MUBL_COMPAT_PX4_CAN`, bxCAN): the shared structure in CAN1 filter banks 2-4
+  (signature, bus speed, node ID, CRC-64) is read at start and written for the application.
+
+`app/mubl_app.h` is the application side.
+
+## Boards and configuration
+
+A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f4|h7`, `CAN_FD := 1`).
+
+| Board | Part | Links | Notes |
+| --- | --- | --- | --- |
+| `f042-can` | STM32F042K6 | DroneCAN | 8 KiB bootloader |
+| `f042-node` | STM32F042K6 | DroneCAN, SRXL2 + serial on one wire | 12 KiB |
+| `f303-node` | STM32F303CC | DroneCAN, serial, SRXL2 | PX4 handoff |
+| `f405-node` | STM32F405RG | serial first, DroneCAN, SRXL2 | sector 0 (16 KiB); AP_Periph and PX4 handoff |
+| `h743-node` | STM32H743ZI (Nucleo) | DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
+| `h735-node` | STM32H735 | DroneCAN over CAN FD, serial | direct SMPS; check against your board |
+
+The settings and their defaults are in [src/mubl_config.h](src/mubl_config.h).  The ones every
+board sets: `MUBL_FAMILY`, `MUBL_BL_SIZE`, `MUBL_APP_SIZE`, `MUBL_RAM_BASE`, `MUBL_RAM_SIZE`,
+`MUBL_HSE_HZ`, the links (`MUBL_DRONECAN`, `MUBL_SERIAL`, `MUBL_SRXL2`, `MUBL_LINK_PRIORITY`) and
+their pins: `MUBL_CAN_RX_PIN`/`TX_PIN`, `MUBL_UARTn_INSTANCE`/`TX_PIN`/`RX_PIN` (no RX pin makes a
+single-wire half-duplex port), `MUBL_SERIAL_PORT`, `MUBL_SRXL2_PORT`.  H7 boards must also set
+`MUBL_H7_PWR_CR3` to the supply their hardware is wired for.  Boards with RAM besides
+`MUBL_RAM_BASE`/`SIZE` list it in `MUBL_STACK_RAM` if an application may put its stack there.  Pins are `MUBL_PIN('A', 11, 4)`:
+port, number, alternate function.
+
+## Adding a part
+
+A part whose peripherals match a supported family (most STM32F0/F3/F4/H74x/H72x/H73x) needs only a
+board file: flash and RAM sizes, pins, clock, and for F0 parts with 2 KiB pages `MUBL_FLASH_PAGE`.
+A new family needs `src/hal/stm32/family_<x>.h` (base addresses and enable bits), its clock set-up in
+`clock.c`, and its flash routine in `flash.c` if the controller differs (G0/G4/L4 program 64-bit
+double words with ECC; H7A3/B0 use 128-bit words and 8 KiB sectors).  bxCAN, FDCAN, USART v1/v2 and
+GPIO are shared.  Add the part to `tests/regcheck/run.py` so its registers are checked against ST's
+header.  Another vendor needs its own `src/hal/<vendor>` implementing `src/hal/hal.h`.
+
+## Building
+
+```
+make BOARD=f303-node          # build/f303-node/mubl.{elf,bin,hex}
+make all-boards
+make test                     # host simulation tests
+make regcheck                 # register definitions against ST CMSIS headers
+make sizes                    # flash, RAM and stack per board
+```
+
+The Makefile uses the Arm GNU Toolchain in `../toolchains` if present, else `arm-none-eabi-gcc` on
+the PATH (`CROSS=` to choose).  Builds use LTO, `-Os`, no C library, and `-Werror`.
+
+## Bring-up on a new board
+
+The STM32 code has not run on hardware yet, so check these in order the first time:
+
+1. Flash the bootloader alone: `st-flash write build/<board>/mubl.bin 0x08000000` (or
+   `STM32_Programmer_CLI -c port=SWD -w build/<board>/mubl.bin 0x08000000`).  With no application it
+   stays; the LED (if `MUBL_LED_PIN`) is on.
+2. Clocks: SysTick drives every timeout, so a wrong `MUBL_HSE_HZ` shows up as timing that is off by
+   the same ratio (NodeStatus not at 1 Hz, uploader timeouts).  On H7 confirm `MUBL_H7_PWR_CR3`
+   against the schematic *before* flashing.
+3. Serial: `uploader.py --port <port> --identify` should report protocol 5 and the board ID.
+4. DroneCAN: on a bus with traffic the node detects the bitrate, gets a node ID from an allocator
+   and appears in the DroneCAN GUI tool with the board name; then update it from there.
+5. SRXL2: `tools/mubl_srxl2.py <port> app.bin` through a half-duplex adapter.
+6. Interrupted update: cut power during an update and check the board comes back in the
+   bootloader; on H7, also during the final second (the first flash word is written last).
+
+## Size
+
+`tools/sizes.py` (Arm GNU Toolchain 14.3, `-Os`, LTO).  Stack is the deepest call chain from GCC's
+call-graph output plus an exception frame; it is an upper bound.
+
+| Board | Links | Flash | RAM | Stack |
+| --- | --- | ---: | ---: | ---: |
+| f042-can | DroneCAN | 7,468 B | 1,656 B | 388 B |
+| f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,528 B | 2,128 B | 444 B |
+| f303-node | all three | 12,236 B | 2,136 B | 412 B |
+| f405-node | all three | 12,700 B | 2,136 B | 412 B |
+| h743-node | all three | 12,744 B | 2,188 B | 432 B |
+| h735-node | DroneCAN (CAN FD), serial | 11,704 B | 2,040 B | 808 B |
+| f042, serial only | | 5,712 B | 632 B | 340 B |
+| f042, SRXL2 only | | 6,172 B | 528 B | 436 B |
+
+On the F042, DroneCAN's LogMessage costs 520 B, RestartNode 184 B and the legacy CRC-64 format
+256 B (`MUBL_DC_LOG`, `MUBL_DC_RESTART`, `MUBL_IMAGE_FORMATS`).  Cortex-M0 has no divide instruction;
+`src/hal/stm32/divide.c` replaces libgcc's 276-byte division helpers with a 54-byte loop.
+
+## Testing
+
+`make test` builds the simulation (`src/hal/host`: NOR-flash semantics, ECC words, power-loss
+injection, retained RAM, CAN with a bus bitrate, UART ports) as a shared library and runs:
+
+| File | Covers | Needs |
+| --- | --- | --- |
+| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation, `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit | |
+| `test_dronecan.py` | allocation, GetNodeInfo, autobaud, `FirmwareUpdater` end to end, AP_Periph and PX4 handoffs, RestartNode, rejected images, a file server lost mid-update, busy with another link | sfwa-dronecan checkout at `../dronecan` (`SFWA_DRONECAN=`) |
+| `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
+| `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud | a pty for the command-line test |
+| `test_links.py` | shared ports, baud-rate slicing, priority, exclusive links, handoff-named links, traffic not holding the boot | |
+| `test_fuzz.py` | `tests/fuzz.c`: random and well-formed-but-random traffic on all three links, random flash and handoff RAM, under AddressSanitizer and UBSan (13,500 iterations clean; reaches 95 % of the serial, 93 % of the SRXL2 and 83 % of the DroneCAN lines) | `MUBL_FUZZ_ITERATIONS=` |
+
+`tests/shim/serial` is a minimal termios stand-in for pyserial so `uploader.py` runs without it.
+`MUBL_EXHAUSTIVE=1` makes the power-loss tests visit every flash operation (about a minute).
+`MUBL_SIM_BLOCKING=1` runs every test with time passing inside blocking calls (delays, UART and CAN
+transmission, flash erase and program), as on hardware; some tests always do, and so does the fuzzer
+half the time.
+
+## Limitations
+
+- Not yet run on hardware; first bring-up should watch clocks, CAN bit timing and the H7 supply.
+- One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
+- Serial is UART only; USB CDC is not implemented.
+- SRXL2 updates use µBL's own packet; no Spektrum tool speaks it.
+- No signed images and no rollback: an interrupted update leaves the bootloader waiting for another.
+- An erase blocks the main loop (up to a few seconds per H7 sector); links are not serviced meanwhile.

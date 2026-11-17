@@ -1,0 +1,2 @@
+FAMILY := h7
+CAN_FD := 1
