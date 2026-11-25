@@ -101,7 +101,10 @@ updated.  Existing AP_Periph and PX4 applications need no changes on boards with
   per power-on.  The application must configure the same supply (Cube's `HAL_PWREx_ConfigSupply`
   returns an error for a different one).
 - **Clocks.**  The bootloader returns to HSI with the PLL and HSE off (H7: HSE off; the CPU never left
-  HSI), so the application's clock set-up starts from the reset configuration.  With USB, HSI48,
+  HSI), so the application's clock set-up starts from the reset configuration.  One exception on
+  H7: the D2-domain SRAM clocks (SRAM1-2, and SRAM3 on H74x/H75x) are on, as ArduPilot's bootloader
+  leaves them, because ChibiOS's start-up (ArduPilot's main stack is in SRAM1) uses that RAM before
+  its own clock set-up enables it.  With USB, HSI48,
   the CRS and the USB clock selection are back at their reset values too (H7: `PWR_CR3.USB33DEN`
   cleared).
 - **USB.**  The bootloader detaches from USB (`MUBL_USB_DETACH_MS`) and resets the peripheral before

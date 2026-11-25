@@ -22,6 +22,11 @@
  *   switch (PD11) are low (supplies off, camera 2 selected) and the SPI chip selects are high.
  * - The blue LED (PE3, active low) is on in the bootloader.  There is no button to hold it: the
  *   board's BOOT button is BOOT0, which starts ST's ROM DFU loader instead.
+ * - Images without a descriptor boot too (MUBL_RAW_IMAGES): ArduPilot puts one only in AP_Periph
+ *   and Remote ID builds, and Betaflight never does.  Such an image is checked only for a plausible
+ *   stack pointer and reset vector; an interrupted update still leaves it unbootable, as its first
+ *   block is written last.  Images that have a descriptor are still checked by it (CRCs, board ID).
+ *   -DMUBL_RAW_IMAGES=0 boots only images with a descriptor.
  * - The USB product string ends in "-BL", as ArduPilot's bootloaders do, so that uploader.py's
  *   default port list finds it on Linux (/dev/serial/by-id/usb-*-BL_*).
  * - While a USB host is connected the bootloader stays (MUBL_USB_STAY), also after the application
@@ -41,6 +46,10 @@
 /* AXI SRAM, SRAM1-3, SRAM4 */
 #define MUBL_STACK_RAM {0x24000000, 0x24080000}, {0x30000000, 0x30048000}, {0x38000000, 0x38010000}
 #define MUBL_H7_PWR_CR3 0x2                      /* LDOEN, SCUEN cleared: LDO supply, locked */
+#define MUBL_H7_SRAM3 1                          /* H74x: SRAM1-3 in the D2 domain */
+#ifndef MUBL_RAW_IMAGES
+#define MUBL_RAW_IMAGES 1                        /* stock ArduPilot and Betaflight have no descriptor */
+#endif
 
 #define MUBL_HSE_HZ 8000000
 

@@ -21,6 +21,7 @@
 #define RCC_APB1HRSTR REG32(STM32_RCC + 0x094U)
 #define RCC_APB2RSTR REG32(STM32_RCC + 0x098U)
 #define RCC_AHB1ENR REG32(STM32_RCC + 0x0D8U)
+#define RCC_AHB2ENR REG32(STM32_RCC + 0x0DCU)
 #define RCC_AHB4ENR REG32(STM32_RCC + 0x0E0U)
 #define RCC_APB1LENR REG32(STM32_RCC + 0x0E8U)
 #define RCC_APB1HENR REG32(STM32_RCC + 0x0ECU)
@@ -33,6 +34,17 @@
 #define RCC_CR_HSEBYP (1U << 18)
 #define RCC_D2CCIP1R_FDCANSEL_POS 28U
 #define RCC_D2CCIP2R_USBSEL (3U << 20)          /* 3: HSI48 */
+
+/* D2-domain SRAM clocks, off after reset.  The application starts with them on, as ArduPilot's
+ * bootloader leaves them: ChibiOS's start-up uses its stack there (ArduPilot: SRAM1) before its own
+ * clock set-up turns them on.  SRAM3 is on H74x/H75x only (MUBL_H7_SRAM3). */
+#define RCC_AHB2ENR_SRAM1EN (1U << 29)
+#define RCC_AHB2ENR_SRAM2EN (1U << 30)
+#define RCC_AHB2ENR_SRAM3EN (1U << 31)
+#ifndef MUBL_H7_SRAM3
+#define MUBL_H7_SRAM3 0
+#endif
+#define STM32_D2_SRAMS (RCC_AHB2ENR_SRAM1EN | RCC_AHB2ENR_SRAM2EN | (MUBL_H7_SRAM3 ? RCC_AHB2ENR_SRAM3EN : 0U))
 
 #define STM32_PWR 0x58024800U
 #define PWR_CSR1 REG32(STM32_PWR + 0x004U)

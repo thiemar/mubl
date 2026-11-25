@@ -6,13 +6,13 @@ supported as shipped; other parts are added with a board file and, where the per
 family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
 
-Status: everything above the register level is tested on a host simulation (242 tests, including
+Status: everything above the register level is tested on a host simulation (272 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
 Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
 operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
-checked against ST's CMSIS headers.  **On hardware, only USB on the STM32H735G-DK (`h735g-dk`) has
-run so far** (see [Hardware tests](#hardware-tests)); DroneCAN, the UART links and the other parts
-have not.
+checked against ST's CMSIS headers.  **On hardware, only USB on two H7 boards has run so far**: the
+STM32H735G-DK (`h735g-dk`) and a TBS Lucid H7 (`tbs-lucid-h7`), which boots stock ArduCopter (see
+[Hardware tests](#hardware-tests)); DroneCAN, the UART links and the F0/F3/F4 parts have not.
 
 ## Contents
 
@@ -211,6 +211,13 @@ Every format also needs the initial SP inside RAM the board has: its own `MUBL_R
 a bank listed in `MUBL_STACK_RAM` (CCM, AXI SRAM, SRAM1-4; the example boards list theirs).  With
 a descriptor the reset vector must also lie inside the image it describes, not just the region.
 
+The default is `MUBL_IMG_AP | MUBL_IMG_LEGACY`.  `MUBL_RAW_IMAGES=1` adds `MUBL_IMG_RAW`, for
+applications built without a descriptor: stock ArduPilot vehicle firmware (it carries one only in
+AP_Periph and Remote ID builds) and Betaflight.  An image with a descriptor is still judged by it, so
+a bad CRC or another board's ID is rejected rather than booted as raw.  A raw image has no CRC: a
+corrupted one is not caught, but an interrupted update still never boots, because the first block
+(the vectors) is written last.  `tbs-lucid-h7` sets `MUBL_RAW_IMAGES` by default.
+
 CRCs, by the instruction counts of the generated loops (not measured):
 
 | | CRC-32 | CRC-64 (legacy format, PX4 handoff) |
@@ -259,7 +266,7 @@ A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f
 | `h743-node` | STM32H743ZI (Nucleo) | USB (OTG_FS), DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
 | `h735-node` | STM32H735 | USB (OTG_HS), DroneCAN over CAN FD, serial | direct SMPS; check against your board |
 | `h735g-dk` | STM32H735IG (ST STM32H735G-DK) | USB (OTG_HS) | direct SMPS; LED1, user button |
-| `tbs-lucid-h7` | STM32H743 (TBS Lucid H7) | USB (OTG_FS), DroneCAN (FDCAN1), serial (UART7) | ArduPilot layout and board ID (variants by `MUBL_BOARD_ID`); parameter sectors kept |
+| `tbs-lucid-h7` | STM32H743 (TBS Lucid H7) | USB (OTG_FS), DroneCAN (FDCAN1), serial (UART7) | ArduPilot layout and board ID (variants by `MUBL_BOARD_ID`); parameter sectors kept; boots images without a descriptor (`MUBL_RAW_IMAGES`) |
 
 The settings and their defaults are in [src/mubl_config.h](src/mubl_config.h).  The ones every
 board sets: `MUBL_FAMILY`, `MUBL_BL_SIZE`, `MUBL_APP_SIZE`, `MUBL_RAM_BASE`, `MUBL_RAM_SIZE`,
@@ -297,7 +304,7 @@ the PATH (`CROSS=` to choose).  Builds use LTO, `-Os`, no C library, and `-Werro
 
 ## Bring-up on a new board
 
-Only `h735g-dk` (USB) has run on hardware so far, so on other boards check these in order the first time:
+Only USB on `h735g-dk` and `tbs-lucid-h7` has run on hardware so far, so on other boards check these in order the first time:
 
 1. Flash the bootloader alone: `st-flash write build/<board>/mubl.bin 0x08000000` (or
    `STM32_Programmer_CLI -c port=SWD -w build/<board>/mubl.bin 0x08000000`).  With no application it
@@ -354,7 +361,7 @@ USB host that enumerates the device) as a shared library and runs:
 
 | File | Covers | Needs |
 | --- | --- | --- |
-| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation, `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
+| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation (also of raw images with `MUBL_RAW_IMAGES`), `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
 | `test_dronecan.py` | allocation, GetNodeInfo, autobaud, `FirmwareUpdater` end to end, AP_Periph and PX4 handoffs, RestartNode, rejected images, a file server lost mid-update, busy with another link | sfwa-dronecan checkout at `../dronecan` (`SFWA_DRONECAN=`) |
 | `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
 | `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud | a pty for the command-line test |
@@ -387,10 +394,28 @@ Not covered there: the user button, and power loss during an update.  The run fo
 written after `hal_deinit` had stopped the CRC unit (every F3 and H7 board); the simulation now
 models that unit's clock (`BootH7CrcUnit`, `UpdateH7CrcUnit`, `AppHeaderCrcUnit`).
 
+`tests/hw/usb-app` is a test application with a USB console instead, for boards without a debug
+probe's serial port: it brings up USB with µBL's own driver (product "mubl test app"), and answers
+`i` (version, VTOR, handoff, uptime), `r` and `b` there (`make BOARD=tbs-lucid-h7` or `h735g-dk`).
+Run on a TBS Lucid H7 on 2026-11-25, with the bootloader and that application written through ST's
+ROM DFU loader (BOOT button held at plug-in) and started from it:
+
+- the bootloader enumerates as "TBS Lucid H7-BL" and stays; `uploader.py --identify` reports
+  protocol 5, board 5250, 1664 KiB and an STM32H74x rev V;
+- after BOOT the application enumerates as "mubl test app" and reports VTOR 0x08020000 and the
+  handoff from USB;
+- stock ArduCopter 4.7.0-beta3 (no descriptor: `MUBL_RAW_IMAGES`), 1.5 MB, uploads through
+  `uploader.py` in 24 s and starts: it enumerates as ArduPilot's TBS_LUCID_H7 and sends heartbeats
+  and AUTOPILOT_VERSION (4.7.0, board 5250), with the parameters in sectors 14-15 untouched.
+
+That run found ArduCopter faulting before it reached USB: ChibiOS's start-up uses its stack in SRAM1
+before its clock set-up enables the D2-domain SRAMs, which ArduPilot's bootloader leaves enabled.
+µBL now starts H7 applications with SRAM1-2 (and SRAM3 with `MUBL_H7_SRAM3`) clocked.
+
 ## Limitations
 
-- On hardware so far only USB on the STM32H735G-DK; first bring-up elsewhere should watch clocks,
-  CAN bit timing and the H7 supply.
+- On hardware so far only USB on the STM32H735G-DK and a TBS Lucid H7; first bring-up elsewhere
+  should watch clocks, CAN bit timing and the H7 supply.
 - One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
 - USB: no VBUS sensing (a suspended host counts as gone); full speed only; the device always
   re-enumerates for the application (no live handoff of the USB connection).  The USB models are

@@ -235,7 +235,7 @@ FDCAN = [reg('FDCAN_' + f, 'FDCAN_GlobalTypeDef', '0', f) for f in (
 H7 = CORE + CORE_M3 + GPIO + IWDG + usart_v2('USART_ISR_RXNE_RXFNE', 'USART_ISR_TXE_TXFNF') + FDCAN + \
     [reg('&RCC_' + f, 'RCC_TypeDef', 'RCC_BASE', f) for f in ('CR', 'CFGR', 'D2CCIP1R', 'AHB4RSTR', 'APB1LRSTR',
                                                               'APB1HRSTR', 'APB2RSTR', 'AHB4ENR', 'APB1LENR',
-                                                              'APB1HENR', 'APB2ENR')] + \
+                                                              'APB1HENR', 'APB2ENR', 'AHB2ENR')] + \
     [reg('&PWR_' + f, 'PWR_TypeDef', 'PWR_BASE', f) for f in ('CSR1', 'CR3')] + \
     [('&FLASH_ACR', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, ACR))'),
      ('&FLASH_KEYR(0)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, KEYR1))'),
@@ -245,7 +245,8 @@ H7 = CORE + CORE_M3 + GPIO + IWDG + usart_v2('USART_ISR_RXNE_RXFNE', 'USART_ISR_
      ('&FLASH_OPTSR_CUR', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, OPTSR_CUR))'),
      ('FLASH_OPTSR_IWDG1_SW', 'FLASH_OPTSR_IWDG1_SW'), ('FLASH_CR_PSIZE_POS', 'FLASH_CR_PSIZE_Pos')] + \
     same('RCC_CR_HSEON', 'RCC_CR_HSERDY', 'RCC_CR_HSEBYP', 'PWR_CSR1_ACTVOSRDY', 'FLASH_CR_LOCK', 'FLASH_CR_PG',
-         'FLASH_CR_SER', 'FLASH_CR_START', 'FLASH_SR_BSY', 'FLASH_SR_WBNE', 'FLASH_SR_QW', 'FLASH_SR_DBECCERR') + \
+         'FLASH_CR_SER', 'FLASH_CR_START', 'FLASH_SR_BSY', 'FLASH_SR_WBNE', 'FLASH_SR_QW', 'FLASH_SR_DBECCERR',
+         'RCC_AHB2ENR_SRAM1EN', 'RCC_AHB2ENR_SRAM2EN') + \
     [('RCC_D2CCIP1R_FDCANSEL_POS', 'RCC_D2CCIP1R_FDCANSEL_Pos'), ('FLASH_ACR_LATENCY_POS', 'FLASH_ACR_LATENCY_Pos'),
      ('FLASH_ACR_WRHIGHFREQ_POS', 'FLASH_ACR_WRHIGHFREQ_Pos'), ('FLASH_CR_SNB_POS', 'FLASH_CR_SNB_Pos'),
      ('FLASH_SR_PROG_ERRORS', '(FLASH_SR_WRPERR | FLASH_SR_PGSERR | FLASH_SR_STRBERR | FLASH_SR_INCERR | FLASH_SR_OPERR)'),
@@ -276,7 +277,8 @@ PARTS['stm32h743xx'] = ('H7', 'STM32H7xx', 'core_cm7', H7 + [
     ('&FLASH_KEYR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, KEYR2))'),
     ('&FLASH_CR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, CR2))'),
     ('&FLASH_SR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, SR2))'),
-    ('&FLASH_CCR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, CCR2))'), ('0x2', 'PWR_CR3_LDOEN')])
+    ('&FLASH_CCR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, CCR2))'), ('0x2', 'PWR_CR3_LDOEN'),
+    ('RCC_AHB2ENR_SRAM3EN', 'RCC_AHB2ENR_SRAM3EN')])
 PARTS['stm32h735xx'] = ('H7', 'STM32H7xx', 'core_cm7', H7 + [('0x4', 'PWR_CR3_SMPSEN')])
 # The H74x's second core, USB2 OTG_FS (part:defines checks the same header with other board settings).
 PARTS['stm32h743xx:MUBL_USB_OTG_INSTANCE=2'] = ('H7', 'STM32H7xx', 'core_cm7', [

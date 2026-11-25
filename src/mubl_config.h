@@ -142,8 +142,14 @@
 #ifndef MUBL_MAX_BOOT_ATTEMPTS
 #define MUBL_MAX_BOOT_ATTEMPTS 0      /* stay after this many boots the application did not confirm */
 #endif
+#ifndef MUBL_RAW_IMAGES
+#define MUBL_RAW_IMAGES 0             /* 1: also boot images with no descriptor (stock ArduPilot, Betaflight) */
+#endif
 #ifndef MUBL_IMAGE_FORMATS
-#define MUBL_IMAGE_FORMATS (MUBL_IMG_LEGACY | MUBL_IMG_AP)
+#define MUBL_IMAGE_FORMATS (MUBL_IMG_LEGACY | MUBL_IMG_AP | (MUBL_RAW_IMAGES ? MUBL_IMG_RAW : 0))
+#endif
+#if MUBL_RAW_IMAGES && !(MUBL_IMAGE_FORMATS & MUBL_IMG_RAW)
+#error "MUBL_RAW_IMAGES needs MUBL_IMG_RAW in MUBL_IMAGE_FORMATS"
 #endif
 #ifndef MUBL_CHECK_BOARD_ID
 #define MUBL_CHECK_BOARD_ID 1         /* AP descriptor: board_id must be MUBL_BOARD_ID (or _ALT) */

@@ -324,6 +324,10 @@ void hal_start_app(void)
 #else
     SCB_VTOR = MUBL_APP_BASE;
 #endif
+#ifdef STM32_D2_SRAMS
+    RCC_AHB2ENR |= STM32_D2_SRAMS;                   /* see family_h7.h */
+    (void)RCC_AHB2ENR;
+#endif
     /* Interrupts on as after reset: every source is disabled and nothing is pending. */
     __asm volatile(
         "dsb\n"

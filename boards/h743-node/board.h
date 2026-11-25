@@ -16,6 +16,7 @@
 #define MUBL_HSE_HZ 8000000
 #define MUBL_HSE_BYPASS 1
 #define MUBL_H7_PWR_CR3 0x2                      /* LDOEN, SCUEN cleared: LDO supply, locked */
+#define MUBL_H7_SRAM3 1                          /* H74x: SRAM1-3 in the D2 domain */
 
 #define MUBL_DRONECAN 1
 #define MUBL_SERIAL 1

@@ -220,6 +220,30 @@ class BootH7(Boot):
         self.assertEqual(self.sim.errors(), 0)
 
 
+class BootH7RawImages(BootH7):
+    """MUBL_RAW_IMAGES (as tbs-lucid-h7, for stock ArduPilot): an image without a descriptor boots on
+    its vectors; one with a descriptor is still checked by it (the inherited tests)."""
+    defines = {'MUBL_RAW_IMAGES': 1}
+
+    def test_no_descriptor(self):
+        self.boot_with(make_image(self.sim, fmt='raw', size=40000))
+        self.assertEqual(self.sim.app_status(), APP_OK)
+        self.assertEqual(self.sim.run(BOOT_DELAY + 10), STATE_APP)
+        self.assertEqual(self.sim.errors(), 0)
+
+    def test_raw_image_needs_plausible_vectors(self):
+        self.check_rejected(make_image(self.sim, fmt='raw', sp=0x30000000), APP_BAD_VECTORS)
+
+    def test_raw_upload_boots(self):
+        img = make_image(self.sim, fmt='raw', size=50001, seed=3)
+        self.assertEqual(self.sim.boot(), STATE_BOOTLOADER)            # empty flash: stays
+        _, status = SerialClient(self.sim).upload(img)
+        self.assertEqual(status, OK)
+        self.assertEqual(self.sim.run(50), STATE_APP)
+        self.assertEqual(self.sim.flash(0, len(img)), img)
+        self.assertEqual(self.sim.errors(), 0)
+
+
 class BootH7CrcUnit(BootH7):
     """As on the hardware: CRC-32 in the CRC unit, whose clock hal_deinit stops (the handoff to the
     application must be written before that)."""
@@ -229,6 +253,7 @@ class BootH7CrcUnit(BootH7):
 class Update(unittest.TestCase):
     geometry = 1
     defines = None
+    image_fmt = 'ap'                    # of the images in test_power_loss_anywhere
 
     def setUp(self):
         self.sim = Sim(self.geometry, self.defines).fresh()
@@ -280,8 +305,10 @@ class Update(unittest.TestCase):
     def test_power_loss_anywhere(self):
         """Power fails at every flash operation of an update over a previous image: afterwards the
         bootloader never starts a partial image, and a new update always succeeds."""
-        old = make_image(self.sim, size=min(60000, self.sim.app_size * 6 // 10), seed=10, version=(1, 0))
-        new = make_image(self.sim, size=min(45001, self.sim.app_size * 45 // 100), seed=11, version=(2, 0))
+        old = make_image(self.sim, size=min(60000, self.sim.app_size * 6 // 10), seed=10, version=(1, 0),
+                         fmt=self.image_fmt)
+        new = make_image(self.sim, size=min(45001, self.sim.app_size * 45 // 100), seed=11, version=(2, 0),
+                         fmt=self.image_fmt)
         # count the operations of a full update
         self.sim.fresh()
         self.sim.load(old)
@@ -341,6 +368,12 @@ class UpdateF0(Update):
 
 class UpdateH7(Update):
     geometry = 2
+
+
+class UpdateH7RawImages(UpdateH7):
+    """Raw images have no CRC: only writing the first block last keeps a partial one from starting."""
+    defines = {'MUBL_RAW_IMAGES': 1}
+    image_fmt = 'raw'
 
 
 class UpdateH7CrcUnit(UpdateH7):
