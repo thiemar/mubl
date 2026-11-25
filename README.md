@@ -6,7 +6,7 @@ supported as shipped; other parts are added with a board file and, where the per
 family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
 
-Status: everything above the register level is tested on a host simulation (272 tests, including
+Status: everything above the register level is tested on a host simulation (275 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
 Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
 operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
@@ -180,7 +180,7 @@ The specification has no firmware-update packet, so µBL adds one (packet type
 master -> device:  A6 B0 len  dest src op seq  data...            CRC16 (XMODEM, big endian)
 device -> master:  A6 B0 len  master device op|0x80 seq  status data...  CRC16
 op 1 INFO                  -> protocol, app status/format, board ID, region size, versions, VCS, size, UID
-op 2 BEGIN  size:4         erases the first sector
+op 2 BEGIN  size:4         erases the first sector (without the size: bad request, nothing erased)
 op 3 WRITE  offset:4 data  (1-64 bytes) -> next offset:4
 op 4 FINISH size:4 crc:4   zlib CRC-32 of the image; validate, make bootable -> app status
 op 5 BOOT
@@ -262,7 +262,7 @@ A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f
 | `f042-usb` | STM32F042C6 (µCAN) | USB (DroneCAN with `-DMUBL_DRONECAN=1`) | 8 KiB (13 KiB with DroneCAN); no crystal |
 | `f303-node` | STM32F303CC | DroneCAN, serial, SRXL2 | PX4 handoff |
 | `f303-usb` | STM32F303CC | USB, serial, SRXL2 | fixed D+ pull-up; no CAN (shared packet memory) |
-| `f405-node` | STM32F405RG | USB, serial, DroneCAN, SRXL2 | sector 0 (16 KiB, 164 B free); AP_Periph and PX4 handoff |
+| `f405-node` | STM32F405RG | USB, serial, DroneCAN, SRXL2 | sector 0 (16 KiB, 156 B free); AP_Periph and PX4 handoff |
 | `h743-node` | STM32H743ZI (Nucleo) | USB (OTG_FS), DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
 | `h735-node` | STM32H735 | USB (OTG_HS), DroneCAN over CAN FD, serial | direct SMPS; check against your board |
 | `h735g-dk` | STM32H735IG (ST STM32H735G-DK) | USB (OTG_HS) | direct SMPS; LED1, user button |
@@ -331,20 +331,20 @@ call-graph output plus an exception frame; it is an upper bound.
 | Board | Links | Flash | RAM | Stack |
 | --- | --- | ---: | ---: | ---: |
 | f042-can | DroneCAN | 7,468 B | 1,656 B | 388 B |
-| f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,572 B | 2,136 B | 444 B |
-| f042-usb | USB | 7,800 B | 840 B | 316 B |
-| f042-usb | USB, DroneCAN | 12,480 B | 2,176 B | 388 B |
-| f042-node | all four | 15,236 B | 2,672 B | 444 B |
-| f303-node | DroneCAN, serial, SRXL2 | 12,284 B | 2,144 B | 412 B |
-| f303-usb | USB, serial, SRXL2 | 10,892 B | 1,332 B | 412 B |
-| f405-node | all four | 16,220 B | 2,672 B | 412 B |
-| h743-node | all four | 16,472 B | 2,720 B | 432 B |
-| h735-node | USB, DroneCAN (CAN FD), serial | 15,456 B | 2,576 B | 816 B |
-| h735g-dk | USB | 8,656 B | 896 B | 308 B |
-| tbs-lucid-h7 | USB, DroneCAN, serial | 15,120 B | 2,560 B | 432 B |
-| tbs-lucid-h7 | USB | 8,900 B | 896 B | 316 B |
-| f042, serial only | | 5,792 B | 640 B | 348 B |
-| f042, SRXL2 only | | 6,172 B | 536 B | 436 B |
+| f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,576 B | 2,136 B | 444 B |
+| f042-usb | USB | 7,804 B | 840 B | 316 B |
+| f042-usb | USB, DroneCAN | 12,488 B | 2,176 B | 388 B |
+| f042-node | all four | 15,244 B | 2,672 B | 444 B |
+| f303-node | DroneCAN, serial, SRXL2 | 12,292 B | 2,144 B | 412 B |
+| f303-usb | USB, serial, SRXL2 | 10,900 B | 1,332 B | 412 B |
+| f405-node | all four | 16,228 B | 2,672 B | 412 B |
+| h743-node | all four | 16,504 B | 2,720 B | 432 B |
+| h735-node | USB, DroneCAN (CAN FD), serial | 15,488 B | 2,576 B | 816 B |
+| h735g-dk | USB | 8,688 B | 896 B | 308 B |
+| tbs-lucid-h7 | USB, DroneCAN, serial | 15,160 B | 2,560 B | 432 B |
+| tbs-lucid-h7 | USB | 8,932 B | 896 B | 316 B |
+| f042, serial only | | 5,800 B | 640 B | 348 B |
+| f042, SRXL2 only | | 6,176 B | 536 B | 436 B |
 
 USB costs 3.7 KB on the F0 peripheral (driver, descriptors and a second protocol instance), and
 3.5 KB (F4) to 3.6 KB (H7) on the OTG core.
@@ -364,10 +364,10 @@ USB host that enumerates the device) as a shared library and runs:
 | `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation (also of raw images with `MUBL_RAW_IMAGES`), `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
 | `test_dronecan.py` | allocation, GetNodeInfo, autobaud, `FirmwareUpdater` end to end, AP_Periph and PX4 handoffs, RestartNode, rejected images, a file server lost mid-update, busy with another link | sfwa-dronecan checkout at `../dronecan` (`SFWA_DRONECAN=`) |
 | `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
-| `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud | a pty for the command-line test |
+| `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud (also with answers lost while the device holds the fast rate) | a pty for the command-line test |
 | `test_links.py` | shared ports, baud-rate slicing, priority, exclusive links, handoff-named links, traffic not holding the boot | |
 | `test_usb.py` | µCAN's USB driver tests (`tests/usb_fs_test.c`) against both drivers; enumeration, staying while a host is there and booting when it goes, uploads over USB on F0/F4/H7 flash (also with blocking flash), the UART and USB protocol instances side by side, handoff to USB, re-enumeration; every scenario on the F0/F3 peripheral, the OTG core and the F405's OTG core; `uploader.py` through USB | a pty for `uploader.py` |
-| `test_fuzz.py` | `tests/fuzz.c`: random and well-formed-but-random traffic on all four links (USB with the cable coming and going and the host suspending), random flash and handoff RAM, under AddressSanitizer and UBSan, on both USB peripheral models (13,500 iterations clean before USB; reaches 95 % of the serial, 93 % of the SRXL2 and 83 % of the DroneCAN lines) | `MUBL_FUZZ_ITERATIONS=` |
+| `test_fuzz.py` | `tests/fuzz.c`: random and well-formed-but-random traffic on all four links (USB with the cable coming and going and the host suspending), random flash and handoff RAM, under AddressSanitizer and UBSan (with the `mem*` functions declared `nonnull` as glibc does, `tests/nonnull.h`), on both USB peripheral models (13,500 iterations clean before USB; reaches 95 % of the serial, 93 % of the SRXL2 and 83 % of the DroneCAN lines) | `MUBL_FUZZ_ITERATIONS=` |
 
 `tests/shim/serial` is a minimal termios stand-in for pyserial so `uploader.py` runs without it.
 `MUBL_EXHAUSTIVE=1` makes the power-loss tests visit every flash operation (about a minute).

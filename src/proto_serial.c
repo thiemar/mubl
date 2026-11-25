@@ -79,7 +79,7 @@ static serial_t inst[1];
 static void reply(serial_t* s, const uint8_t* data, uint8_t n, uint8_t status)
 {
     uint8_t out[24];
-    memcpy(out, data, n);
+    if (n != 0U) memcpy(out, data, n);   /* status-only replies pass no data (NULL) */
     out[n] = INSYNC;
     out[n + 1U] = status;
 #if MUBL_USB

@@ -10,7 +10,10 @@ its RX and are discarded (--no-echo if your adapter does not echo).
 Sequence: Handshake with the device (SRXL2 Rev K 7.2), optionally switch the bus to 400000 baud,
 then the µBL update packet (type 0xB0): INFO, BEGIN, WRITE (64-byte chunks), FINISH with the
 image's zlib CRC-32, BOOT.  A request without an answer is repeated with the same sequence
-number; the device answers a repeat without executing it twice.
+number; the device answers a repeat without executing it twice.  At 400000 baud an unanswered
+request is repeated once at that rate; after that the updater stays quiet until the device must
+have gone back to 115200 (it keeps the fast rate for two seconds without traffic while it owns an
+update) and handshakes again.
 """
 
 import argparse
@@ -25,6 +28,7 @@ TYPE_HANDSHAKE = 0x21
 TYPE_DFU = 0xB0
 OP_INFO, OP_BEGIN, OP_WRITE, OP_FINISH, OP_BOOT = 1, 2, 3, 4, 5
 CHUNK = 64
+UPDATE_SILENCE = 2.0    # s without traffic before a device owning an update leaves 400000 baud
 STATUS = {0: 'ok', 1: 'busy (another link is updating)', 2: 'out of sequence', 3: 'image too large',
           4: 'flash error', 5: 'image rejected', 6: 'no update in progress', 7: 'bad request'}
 APP_STATUS = {0: 'valid', 1: 'empty', 2: 'bad vectors', 3: 'no descriptor', 4: 'bad size', 5: 'bad CRC',
@@ -123,6 +127,11 @@ class Updater:
         self.parser = Parser()
         self.log = log
         self.fast = False
+        self.sent = 0.0                         # when we last transmitted (transport clock)
+
+    def _send(self, data):
+        self.t.write(data)
+        self.sent = self.t.now()
 
     def _wait(self, match, timeout):
         deadline = self.t.now() + timeout
@@ -136,7 +145,7 @@ class Updater:
     def handshake(self, retries=10):
         hs = packet(TYPE_HANDSHAKE, bytes([self.master, self.device, 10, 1, 0]) + bytes(4))
         for _ in range(retries):
-            self.t.write(hs)
+            self._send(hs)
             r = self._wait(lambda p: p if p[1] == TYPE_HANDSHAKE and p[3] == self.device and p[4] == self.master
                            else None, 0.1)
             if r is not None:
@@ -146,13 +155,18 @@ class Updater:
 
     def set_fast(self):
         """Broadcast the 400000 baud handshake (7.2.1 step 6) and switch."""
-        self.t.write(packet(TYPE_HANDSHAKE, bytes([self.master, 0xFF, 10, 1, 0]) + bytes(4)))
+        self._send(packet(TYPE_HANDSHAKE, bytes([self.master, 0xFF, 10, 1, 0]) + bytes(4)))
         self.t.read(0.01)                     # give the device time to switch before we do
         self.t.set_baud(400000)
         self.fast = True
 
     def _renegotiate(self):
-        """A device that heard nothing for a while has gone back to 115200: handshake again."""
+        """A device that heard nothing for a while goes back to 115200: once it must have (it waits
+        UPDATE_SILENCE while it owns an update, 50 ms otherwise), handshake again.  Bytes at 115200
+        sent before then would reach a device still listening at 400000."""
+        until = self.sent + UPDATE_SILENCE + 0.2
+        while self.t.now() < until:
+            self.t.read(until - self.t.now())   # late replies are dropped: the request is repeated
         self.t.set_baud(115200)
         self.handshake()
         self.set_fast()
@@ -166,12 +180,14 @@ class Updater:
                     p[5] == (op | 0x80) and p[6] == seq:
                 return p[7], p[8:-2]
             return None
-        for _ in range(retries):
-            self.t.write(req)
+        for attempt in range(retries):
+            self._send(req)
             r = self._wait(match, timeout)
             if r is not None:
                 return r
-            if self.fast:
+            # At 400000 baud the answer may just have been lost: repeat once at that rate, and only
+            # then assume the device has dropped back to 115200.
+            if self.fast and attempt % 2 == 1:
                 self._renegotiate()
         raise Error('no answer to request %d' % op)
 

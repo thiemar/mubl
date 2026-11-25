@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import unittest
+import zlib
 
 from clients import OK, SerialClient, SimSrxl2Transport
 from sim import (APP_EMPTY, APP_OK, BUILD, CC, ROOT, STATE_APP, STATE_BOOTLOADER, STAY_HOST, Sim, make_image)
@@ -285,6 +286,20 @@ class Update(unittest.TestCase):
         self.assertEqual(self.sim.app_status(), APP_EMPTY)
         self.assertEqual(self.u.request(srxl2.OP_BOOT)[0], 5)
 
+    def test_truncated_begin_rejected(self):
+        """BEGIN without its four size bytes is refused before anything is erased."""
+        img = make_image(self.sim, size=10000, seed=36)
+        self.sim.load(img)
+        self.sim.boot()
+        self.u.info()
+        for n in range(4):
+            self.assertEqual(self.u.request(srxl2.OP_BEGIN, bytes(n))[0], 7)      # MUBL_E_ARGUMENT
+        self.assertEqual(self.sim.app_status(), APP_OK)
+        self.assertEqual(self.sim.flash(0, len(img)), img)
+        self.assertEqual(self.u.request(srxl2.OP_WRITE, struct.pack('<I', 0) + bytes(64))[0], 6)   # no update
+        self.u.boot()
+        self.assertEqual(self.sim.run(50), STATE_APP)
+
     def test_busy_while_serial_updates(self):
         self.sim = Sim(1, SRXL2_ONLY).fresh()
         self.t = SimSrxl2Transport(self.sim, 0)
@@ -294,6 +309,71 @@ class Update(unittest.TestCase):
         c.identify()
         self.assertEqual(c.erase(), OK)
         self.assertEqual(self.u.request(srxl2.OP_BEGIN, struct.pack('<I', 100), timeout=1)[0], 1)   # BUSY
+
+
+class LossyTransport(SimSrxl2Transport):
+    """Loses the device's next `drop` answers, as noise on the wire would."""
+    drop = 0
+
+    def read(self, timeout):
+        out = super().read(timeout)
+        if out and self.drop:
+            while super().read(0.003):                 # the rest of the packet
+                pass
+            self.drop -= 1
+            return b''
+        return out
+
+
+class LostReplies(unittest.TestCase):
+    """mubl_srxl2.Updater at 400000 baud when the device's answer is lost: while the device owns
+    an update it keeps the fast rate for two seconds of silence, longer than a request's timeout."""
+
+    def setUp(self):
+        self.sim = Sim(1, SRXL2_ONLY).fresh()
+        self.t = LossyTransport(self.sim, 0)
+        self.u = srxl2.Updater(self.t, DEVICE, log=lambda *a: None)
+        self.img = make_image(self.sim, size=4000, seed=35)
+        self.sim.boot()
+        self.u.handshake()
+        self.u.set_fast()
+        self.u.handshake()
+        self.assertEqual(self.u.request(srxl2.OP_BEGIN, struct.pack('<I', len(self.img)), timeout=5)[0], 0)
+        self.renegotiated = 0
+        original = self.u._renegotiate
+
+        def counted():
+            self.renegotiated += 1
+            original()
+        self.u._renegotiate = counted
+
+    def write(self, off):
+        return self.u.request(srxl2.OP_WRITE, struct.pack('<I', off) + self.img[off:off + 64], timeout=1.0)
+
+    def finish(self):
+        for off in range(64, len(self.img), 64):
+            self.assertEqual(self.write(off)[0], 0)
+        crc = zlib.crc32(self.img) & 0xFFFFFFFF
+        self.assertEqual(self.u.request(srxl2.OP_FINISH, struct.pack('<II', len(self.img), crc), timeout=10)[0], 0)
+        self.assertEqual(self.sim.app_status(), APP_OK)
+        self.assertEqual(self.sim.flash(0, len(self.img)), self.img)
+        self.assertEqual(self.sim.errors(), 0)
+
+    def test_lost_answer_repeated_at_400k(self):
+        self.t.drop = 1
+        status, d = self.write(0)
+        self.assertEqual((status, struct.unpack_from('<I', d)[0]), (0, 64))       # written once
+        self.assertEqual(self.renegotiated, 0)
+        self.assertEqual(self.sim.uart_baud(0), 400000)
+        self.finish()
+
+    def test_waits_for_device_to_leave_400k_before_renegotiating(self):
+        self.t.drop = 2                                 # the repeat at 400000 is lost too
+        status, d = self.write(0)
+        self.assertEqual((status, struct.unpack_from('<I', d)[0]), (0, 64))       # still written once
+        self.assertEqual(self.renegotiated, 1)
+        self.assertEqual(self.sim.uart_baud(0), 400000)
+        self.finish()
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ INCLUDES := -Iboards/$(BOARD) -Isrc -Isrc/hal/stm32 -Isrc/dronecan/$(FRAME)
 LTO ?= -flto
 CFLAGS := -mcpu=$(CPU) -mthumb -mfloat-abi=soft -Os -g $(LTO) -std=c11 -ffreestanding -fno-common \
 	-ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns -fstack-usage \
-	-Wall -Wextra -Wshadow -Wundef -Werror $(INCLUDES) $(EXTRA_CFLAGS) $(if $(CALLGRAPH),-fcallgraph-info=su)
+	-Wall -Wextra -Wshadow -Wundef -Werror -MMD -MP $(INCLUDES) $(EXTRA_CFLAGS) $(if $(CALLGRAPH),-fcallgraph-info=su)
 LDFLAGS := -mcpu=$(CPU) -mthumb -Os $(LTO) -nostdlib -nostartfiles -Wl,--gc-sections -Wl,--no-warn-rwx-segments \
 	-Wl,-Map=$(BUILD)/mubl.map -T $(BUILD)/mubl.ld
 
@@ -42,10 +42,14 @@ $(BUILD)/mubl.ld: ld/mubl.ld.S boards/$(BOARD)/board.h src/mubl_config.h src/mub
 	@mkdir -p $(@D)
 	@$(CC) -E -P -x c -Iboards/$(BOARD) -Isrc $(EXTRA_CFLAGS) $< -o $@
 
-$(BUILD)/%.o: %.c boards/$(BOARD)/board.h $(wildcard src/*.h src/hal/*.h src/hal/stm32/*.h src/hal/usb/*.h)
+# Each object depends on the headers it includes (the compiler's .d files: board.h, the selected
+# frame's generated dronecan.h, ...); before the first build there are none and everything compiles.
+$(BUILD)/%.o: %.c
 	@mkdir -p $(@D)
 	@echo "CC $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 $(BUILD)/mubl.elf: $(OBJS) $(BUILD)/mubl.ld
 	@echo "LD $@"

@@ -5,16 +5,19 @@ import os
 import subprocess
 import unittest
 
-from sim import BUILD, CC, ROOT, SOURCES
+from sim import BUILD, CC, HEADERS, ROOT, SOURCES
 
 
 def build(geometry, sanitize, otg=0):
     out = os.path.join(BUILD, 'fuzz_%d%s%s' % (geometry, '_otg' if otg else '', '_san' if sanitize else ''))
     srcs = [os.path.join(ROOT, p) for p in SOURCES + ['src/dronecan/classic/dronecan.c', 'tests/fuzz.c']]
-    if os.path.exists(out) and os.path.getmtime(out) >= max(os.path.getmtime(p) for p in srcs):
+    deps = srcs + [os.path.join(ROOT, p) for p in HEADERS + ['tests/nonnull.h']]
+    if os.path.exists(out) and os.path.getmtime(out) >= max(os.path.getmtime(p) for p in deps):
         return out
     os.makedirs(BUILD, exist_ok=True)
-    san = ['-fsanitize=address,undefined', '-fno-sanitize-recover=undefined', '-fno-omit-frame-pointer'] if sanitize else []
+    san = ['-fsanitize=address,undefined', '-fno-sanitize-recover=undefined', '-fno-omit-frame-pointer',
+           '-U_FORTIFY_SOURCE', '-D_FORTIFY_SOURCE=0', '-include', os.path.join(ROOT, 'tests', 'nonnull.h')] \
+        if sanitize else []
     subprocess.check_call([CC, '-std=c11', '-O1', '-g', '-Wall', '-Wextra', '-Werror'] + san +
                           ['-DSIM_GEOMETRY=%d' % geometry, '-DMUBL_USB_OTG_CORE=%d' % otg,
                            '-I' + os.path.join(ROOT, 'boards/sim'),

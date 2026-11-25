@@ -130,7 +130,8 @@ static void dfu(uint8_t src, uint8_t op, uint8_t seq, const uint8_t* d, uint8_t 
         rn = info(r);
         break;
     case OP_BEGIN:
-        status = n >= 4U && mubl_get32(d) > MUBL_APP_SIZE ? MUBL_E_RANGE : update_begin(LINK);
+        /* The image size is required: without it nothing is erased. */
+        status = n < 4U ? MUBL_E_ARGUMENT : mubl_get32(d) > MUBL_APP_SIZE ? MUBL_E_RANGE : update_begin(LINK);
         break;
     case OP_WRITE:
         status = n < 5U ? MUBL_E_ARGUMENT : update_write(LINK, mubl_get32(d), d + 4, n - 4U);
