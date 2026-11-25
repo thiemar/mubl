@@ -184,11 +184,14 @@
 #ifndef MUBL_SRXL2
 #define MUBL_SRXL2 0
 #endif
-#if !MUBL_DRONECAN && !MUBL_SERIAL && !MUBL_SRXL2
-#error "board.h enables no link (MUBL_DRONECAN, MUBL_SERIAL, MUBL_SRXL2)"
+#ifndef MUBL_USB
+#define MUBL_USB 0                    /* the serial protocol over USB CDC-ACM (MUBL_LINK_USB) */
+#endif
+#if !MUBL_DRONECAN && !MUBL_SERIAL && !MUBL_SRXL2 && !MUBL_USB
+#error "board.h enables no link (MUBL_DRONECAN, MUBL_SERIAL, MUBL_SRXL2, MUBL_USB)"
 #endif
 #ifndef MUBL_LINK_PRIORITY
-#define MUBL_LINK_PRIORITY MUBL_LINK_DRONECAN, MUBL_LINK_SRXL2, MUBL_LINK_SERIAL
+#define MUBL_LINK_PRIORITY MUBL_LINK_USB, MUBL_LINK_DRONECAN, MUBL_LINK_SRXL2, MUBL_LINK_SERIAL
 #endif
 
 /* DroneCAN */
@@ -264,6 +267,52 @@
 #endif
 #ifndef MUBL_SRXL2_REPLY_DELAY_US
 #define MUBL_SRXL2_REPLY_DELAY_US 200 /* idle before replying: at least 2 characters (spec 6.2 f) */
+#endif
+
+/* USB (the serial protocol over CDC-ACM).  The device attaches when the link starts.  A host
+ * driving the bus (start-of-frame packets) within the boot delay keeps the bootloader running
+ * until the host goes away (no frames for MUBL_USB_GONE_MS: unplugged or suspended), a BOOT
+ * command, or a reset.  Pins: F0's USB pins need no set-up; elsewhere set MUBL_USB_DM_PIN and
+ * MUBL_USB_DP_PIN (with their alternate function), and MUBL_USB_PULLUP_PIN where D+ is pulled up
+ * by an external switch (driven to MUBL_USB_PULLUP_LEVEL to attach). */
+#ifndef MUBL_USB_OTG_CORE
+#define MUBL_USB_OTG_CORE (MUBL_FAMILY == MUBL_FAMILY_F4 || MUBL_FAMILY == MUBL_FAMILY_H7)  /* else the F0/F3 one */
+#endif
+#ifndef MUBL_USB_STAY
+#define MUBL_USB_STAY 1               /* 0: USB is like a UART: boot after the delay unless used */
+#endif
+#ifndef MUBL_USB_GONE_MS
+#define MUBL_USB_GONE_MS 500
+#endif
+#ifndef MUBL_USB_VID
+#define MUBL_USB_VID 0x0483           /* ST's virtual COM port IDs, as µCAN */
+#endif
+#ifndef MUBL_USB_PID
+#define MUBL_USB_PID 0x5740
+#endif
+#ifndef MUBL_USB_BCD_DEVICE
+#define MUBL_USB_BCD_DEVICE ((MUBL_VERSION_MAJOR << 8) | MUBL_VERSION_MINOR)
+#endif
+#ifndef MUBL_USB_MANUFACTURER
+#define MUBL_USB_MANUFACTURER "muBL"
+#endif
+#ifndef MUBL_USB_PRODUCT
+#define MUBL_USB_PRODUCT MUBL_BOARD_NAME
+#endif
+#ifndef MUBL_USB_MAX_POWER_MA
+#define MUBL_USB_MAX_POWER_MA 100
+#endif
+#ifndef MUBL_USB_TX_SIZE
+#define MUBL_USB_TX_SIZE 64           /* transmit ring: a power of two; replies are at most 22 bytes */
+#endif
+#ifndef MUBL_USB_FLUSH_MS
+#define MUBL_USB_FLUSH_MS 20          /* before detaching: time for the host to collect the last reply */
+#endif
+#ifndef MUBL_USB_DETACH_MS
+#define MUBL_USB_DETACH_MS 20         /* detached this long before the application starts */
+#endif
+#ifndef MUBL_USB_PULLUP_LEVEL
+#define MUBL_USB_PULLUP_LEVEL 1
 #endif
 
 #endif /* MUBL_CONFIG_H */

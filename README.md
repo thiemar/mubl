@@ -1,15 +1,15 @@
 # µBL
 
 A small, freestanding C bootloader for STM32 with firmware update over **DroneCAN**, the
-**PX4/ArduPilot serial bootloader protocol** and **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 are
+**PX4/ArduPilot serial bootloader protocol** (on a UART and over **USB**) and **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 are
 supported as shipped; other parts are added with a board file and, where the peripherals differ, a
 family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
 
-Status: everything above the register level is tested on a host simulation (150 tests, including
-ArduPilot's `uploader.py`, sfwa-dronecan's `FirmwareUpdater` and Spektrum's reference SRXL2 code,
-power loss injected at every flash operation of an update, and sanitizer-checked fuzzing of all
-three links).  The STM32 code builds for every example board and its register definitions are
+Status: everything above the register level is tested on a host simulation (212 tests, including
+ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
+Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
+operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
 checked against ST's CMSIS headers, but **it has not yet run on hardware**.
 
 ## Contents
@@ -17,7 +17,7 @@ checked against ST's CMSIS headers, but **it has not yet run on hardware**.
 - [How it boots](#how-it-boots)
 - [Links: detection and priority](#links-detection-and-priority)
 - [Updating safely](#updating-safely)
-- [DroneCAN](#dronecan) · [Serial](#serial) · [SRXL2](#srxl2)
+- [DroneCAN](#dronecan) · [Serial](#serial) · [USB](#usb) · [SRXL2](#srxl2)
 - [Images](#images) · [Handoff](#handoff)
 - [Boards and configuration](#boards-and-configuration) · [Adding a part](#adding-a-part)
 - [Building](#building) · [Bring-up](#bring-up-on-a-new-board) · [Size](#size) · [Testing](#testing) · [Limitations](#limitations)
@@ -34,6 +34,7 @@ its links and polls them.  It starts the application `MUBL_BOOT_DELAY_MS` (1 s) 
 | hold pin | `MUBL_HOLD_PIN` asserted at reset |
 | a host started using a link | serial `GET_SYNC` + identify, any SRXL2 update packet, DroneCAN BeginFirmwareUpdate (and GetNodeInfo with `MUBL_DC_HOLD_ON_GETNODEINFO`) |
 | boot loop | the application did not confirm `MUBL_MAX_BOOT_ATTEMPTS` boots in a row |
+| a USB host is connected | start-of-frame packets within the boot delay (`MUBL_USB_STAY`, on by default); until the host goes away (`MUBL_USB_GONE_MS` without frames: unplugged or suspended), `BOOT` or a reset |
 
 Traffic alone never holds the bootloader: on an aircraft the CAN bus and the SRXL2 receiver are
 always talking, and a valid application must still start on time.  An update in progress always
@@ -56,6 +57,7 @@ off, or detected from traffic it has heard).
 | DroneCAN | a frame is received.  Without a configured or handed-off bitrate the controller listens silently (no ACKs) at 1M, 500k, 250k, 125k in turn, moving on at the first protocol error or after `MUBL_CAN_AUTOBAUD_DWELL_MS` of silence |
 | serial | a well-formed `GET_SYNC` arrives |
 | SRXL2 | a packet with a valid CRC arrives |
+| USB | the host sends start-of-frame packets (it has reset the bus after the device attached) |
 
 Priority decides:
 
@@ -129,6 +131,36 @@ EXTF_SIZE 0), `CHIP_ERASE`, `PROG_MULTI` (≤ 252 bytes), `GET_CRC`, `GET_OTP`, 
 `GET_CRC` covers the region as it will be after `BOOT`; `BOOT` validates the image and answers
 FAILED if it does not pass.  ArduPilot's `uploader.py` runs against it unmodified (on a dedicated
 port and on a port shared with SRXL2).
+
+## USB
+
+The serial protocol over USB CDC-ACM (`MUBL_USB`, link `MUBL_LINK_USB`): a second instance of the
+same protocol, so `uploader.py`, QGroundControl and Mission Planner work through the USB port as
+through a UART.  `SET_BAUD` is acknowledged and ignored.  Only one link owns an update at a time.
+
+- **Attach and stay.**  The device attaches when the link starts.  A host that enumerates it within
+  the boot delay (hosts reset the bus about 100 ms after attach) keeps the bootloader running while
+  it is there; on a charger nothing happens and the application starts on time.  There is no VBUS
+  sensing: a host that suspends the bus counts as gone.
+- **Leaving.**  `BOOT` is answered, the reply flushed, then the device detaches for
+  `MUBL_USB_DETACH_MS` before the application starts, so the host sees a new device; the application
+  enumerates its own USB afresh.  An application asks for the bootloader over USB with the handoff
+  (link 4), then resets; only USB then runs.
+- **Drivers.**  `src/hal/usb/usb_cdc.c` holds the descriptors and requests; `usb_fs.c` drives the
+  F0/F3 USB peripheral (ported from µCAN's driver), `usb_otg.c` the OTG core of F4 and H7.  Both are
+  polled; the USB interrupt is not used.  Received data is taken only as fast as the protocol
+  consumes it, so the host is held off (NAK) while flash is busy.
+- **Clocks.**  F0: the crystal's PLL, or HSI48 trimmed by the CRS against the host's frames.  F3, F4:
+  the crystal only (USB stays off the bus if it fails).  H7: HSI48 with the CRS, and VDD33USB.
+- **IDs.**  `MUBL_USB_VID`/`PID` default to ST's virtual COM port (0483:5740, as µCAN); the
+  product string is the board name, the serial number the unique ID.
+
+| Family | Peripheral | Board settings |
+| --- | --- | --- |
+| F0 (F04x/F07x/F09x) | USB, internal D+ pull-up | none (PA11/PA12 are dedicated) |
+| F3 (F302/F303) | USB, no internal pull-up | `MUBL_USB_DM_PIN`/`DP_PIN` (AF14); `MUBL_USB_PULLUP_PIN` for a switched pull-up, otherwise D+ is driven low to detach; `MUBL_F3_USB_PMA_16BIT` on xD/xE |
+| F4 | OTG_FS | `MUBL_USB_DM_PIN`/`DP_PIN` (AF10); `MUBL_F4_OTG_VBDEN` on F446/F412-class cores; a system clock whose VCO is a multiple of 48 MHz |
+| H7 | OTG_HS or OTG_FS, embedded FS PHY | `MUBL_USB_OTG_INSTANCE` (1: OTG_HS, 2: OTG_FS), its pins (AF10 on PA11/PA12, AF12 on PB14/PB15) |
 
 ## SRXL2
 
@@ -218,14 +250,16 @@ A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f
 | --- | --- | --- | --- |
 | `f042-can` | STM32F042K6 | DroneCAN | 8 KiB bootloader |
 | `f042-node` | STM32F042K6 | DroneCAN, SRXL2 + serial on one wire | 12 KiB |
+| `f042-usb` | STM32F042C6 (µCAN) | USB (DroneCAN with `-DMUBL_DRONECAN=1`) | 8 KiB (13 KiB with DroneCAN); no crystal |
 | `f303-node` | STM32F303CC | DroneCAN, serial, SRXL2 | PX4 handoff |
-| `f405-node` | STM32F405RG | serial first, DroneCAN, SRXL2 | sector 0 (16 KiB); AP_Periph and PX4 handoff |
-| `h743-node` | STM32H743ZI (Nucleo) | DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
-| `h735-node` | STM32H735 | DroneCAN over CAN FD, serial | direct SMPS; check against your board |
+| `f303-usb` | STM32F303CC | USB, serial, SRXL2 | fixed D+ pull-up; no CAN (shared packet memory) |
+| `f405-node` | STM32F405RG | USB, serial, DroneCAN, SRXL2 | sector 0 (16 KiB, 164 B free); AP_Periph and PX4 handoff |
+| `h743-node` | STM32H743ZI (Nucleo) | USB (OTG_FS), DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
+| `h735-node` | STM32H735 | USB (OTG_HS), DroneCAN over CAN FD, serial | direct SMPS; check against your board |
 
 The settings and their defaults are in [src/mubl_config.h](src/mubl_config.h).  The ones every
 board sets: `MUBL_FAMILY`, `MUBL_BL_SIZE`, `MUBL_APP_SIZE`, `MUBL_RAM_BASE`, `MUBL_RAM_SIZE`,
-`MUBL_HSE_HZ`, the links (`MUBL_DRONECAN`, `MUBL_SERIAL`, `MUBL_SRXL2`, `MUBL_LINK_PRIORITY`) and
+`MUBL_HSE_HZ`, the links (`MUBL_DRONECAN`, `MUBL_SERIAL`, `MUBL_SRXL2`, `MUBL_USB`, `MUBL_LINK_PRIORITY`) and
 their pins: `MUBL_CAN_RX_PIN`/`TX_PIN`, `MUBL_UARTn_INSTANCE`/`TX_PIN`/`RX_PIN` (no RX pin makes a
 single-wire half-duplex port), `MUBL_SERIAL_PORT`, `MUBL_SRXL2_PORT`.  H7 boards must also set
 `MUBL_H7_PWR_CR3` to the supply their hardware is wired for.  Boards with RAM besides
@@ -265,7 +299,11 @@ The STM32 code has not run on hardware yet, so check these in order the first ti
 2. Clocks: SysTick drives every timeout, so a wrong `MUBL_HSE_HZ` shows up as timing that is off by
    the same ratio (NodeStatus not at 1 Hz, uploader timeouts).  On H7 confirm `MUBL_H7_PWR_CR3`
    against the schematic *before* flashing.
-3. Serial: `uploader.py --port <port> --identify` should report protocol 5 and the board ID.
+3. Serial: `uploader.py --port <port> --identify` should report protocol 5 and the board ID.  USB:
+   plugging in should show a CDC-ACM port with the board name and unique ID within the boot delay
+   (`lsusb -v`, System Information), and the same command should work on it.  If it does not
+   enumerate, check the 48 MHz clock (F0 without crystal: HSI48 and the CRS; H7: VDD33USB) and, on
+   F3, the D+ pull-up.
 4. DroneCAN: on a bus with traffic the node detects the bitrate, gets a node ID from an allocator
    and appears in the DroneCAN GUI tool with the board name; then update it from there.
 5. SRXL2: `tools/mubl_srxl2.py <port> app.bin` through a half-duplex adapter.
@@ -280,13 +318,20 @@ call-graph output plus an exception frame; it is an upper bound.
 | Board | Links | Flash | RAM | Stack |
 | --- | --- | ---: | ---: | ---: |
 | f042-can | DroneCAN | 7,468 B | 1,656 B | 388 B |
-| f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,528 B | 2,128 B | 444 B |
-| f303-node | all three | 12,236 B | 2,136 B | 412 B |
-| f405-node | all three | 12,700 B | 2,136 B | 412 B |
-| h743-node | all three | 12,744 B | 2,188 B | 432 B |
-| h735-node | DroneCAN (CAN FD), serial | 11,704 B | 2,040 B | 808 B |
-| f042, serial only | | 5,712 B | 632 B | 340 B |
-| f042, SRXL2 only | | 6,172 B | 528 B | 436 B |
+| f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,572 B | 2,136 B | 444 B |
+| f042-usb | USB | 7,800 B | 840 B | 316 B |
+| f042-usb | USB, DroneCAN | 12,480 B | 2,176 B | 388 B |
+| f042-node | all four | 15,236 B | 2,672 B | 444 B |
+| f303-node | DroneCAN, serial, SRXL2 | 12,284 B | 2,144 B | 412 B |
+| f303-usb | USB, serial, SRXL2 | 10,892 B | 1,332 B | 412 B |
+| f405-node | all four | 16,220 B | 2,672 B | 412 B |
+| h743-node | all four | 16,472 B | 2,720 B | 432 B |
+| h735-node | USB, DroneCAN (CAN FD), serial | 15,456 B | 2,576 B | 816 B |
+| f042, serial only | | 5,792 B | 640 B | 348 B |
+| f042, SRXL2 only | | 6,172 B | 536 B | 436 B |
+
+USB costs 3.7 KB on the F0 peripheral (driver, descriptors and a second protocol instance), and
+3.5 KB (F4) to 3.6 KB (H7) on the OTG core.
 
 On the F042, DroneCAN's LogMessage costs 520 B, RestartNode 184 B and the legacy CRC-64 format
 256 B (`MUBL_DC_LOG`, `MUBL_DC_RESTART`, `MUBL_IMAGE_FORMATS`).  Cortex-M0 has no divide instruction;
@@ -295,7 +340,8 @@ On the F042, DroneCAN's LogMessage costs 520 B, RestartNode 184 B and the legacy
 ## Testing
 
 `make test` builds the simulation (`src/hal/host`: NOR-flash semantics, ECC words, power-loss
-injection, retained RAM, CAN with a bus bitrate, UART ports) as a shared library and runs:
+injection, retained RAM, CAN with a bus bitrate, UART ports, models of the two USB peripherals and a
+USB host that enumerates the device) as a shared library and runs:
 
 | File | Covers | Needs |
 | --- | --- | --- |
@@ -304,7 +350,8 @@ injection, retained RAM, CAN with a bus bitrate, UART ports) as a shared library
 | `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
 | `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud | a pty for the command-line test |
 | `test_links.py` | shared ports, baud-rate slicing, priority, exclusive links, handoff-named links, traffic not holding the boot | |
-| `test_fuzz.py` | `tests/fuzz.c`: random and well-formed-but-random traffic on all three links, random flash and handoff RAM, under AddressSanitizer and UBSan (13,500 iterations clean; reaches 95 % of the serial, 93 % of the SRXL2 and 83 % of the DroneCAN lines) | `MUBL_FUZZ_ITERATIONS=` |
+| `test_usb.py` | µCAN's USB driver tests (`tests/usb_fs_test.c`) against both drivers; enumeration, staying while a host is there and booting when it goes, uploads over USB on F0/F4/H7 flash (also with blocking flash), the UART and USB protocol instances side by side, handoff to USB, re-enumeration; every scenario on the F0/F3 peripheral, the OTG core and the F405's OTG core; `uploader.py` through USB | a pty for `uploader.py` |
+| `test_fuzz.py` | `tests/fuzz.c`: random and well-formed-but-random traffic on all four links (USB with the cable coming and going and the host suspending), random flash and handoff RAM, under AddressSanitizer and UBSan, on both USB peripheral models (13,500 iterations clean before USB; reaches 95 % of the serial, 93 % of the SRXL2 and 83 % of the DroneCAN lines) | `MUBL_FUZZ_ITERATIONS=` |
 
 `tests/shim/serial` is a minimal termios stand-in for pyserial so `uploader.py` runs without it.
 `MUBL_EXHAUSTIVE=1` makes the power-loss tests visit every flash operation (about a minute).
@@ -316,7 +363,10 @@ half the time.
 
 - Not yet run on hardware; first bring-up should watch clocks, CAN bit timing and the H7 supply.
 - One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
-- Serial is UART only; USB CDC is not implemented.
+- USB: no VBUS sensing (a suspended host counts as gone); full speed only; the device always
+  re-enumerates for the application (no live handoff of the USB connection).  The USB models are
+  written from the reference manuals, not checked against silicon.
 - SRXL2 updates use µBL's own packet; no Spektrum tool speaks it.
 - No signed images and no rollback: an interrupted update leaves the bootloader waiting for another.
-- An erase blocks the main loop (up to a few seconds per H7 sector); links are not serviced meanwhile.
+- An erase blocks the main loop (up to a few seconds per H7 sector); links are not serviced meanwhile
+  (USB control requests from the host wait for it).

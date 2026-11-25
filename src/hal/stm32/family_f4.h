@@ -11,9 +11,11 @@
 #define RCC_PLLCFGR REG32(STM32_RCC + 0x04U)
 #define RCC_CFGR REG32(STM32_RCC + 0x08U)
 #define RCC_AHB1RSTR REG32(STM32_RCC + 0x10U)
+#define RCC_AHB2RSTR REG32(STM32_RCC + 0x14U)
 #define RCC_APB1RSTR REG32(STM32_RCC + 0x20U)
 #define RCC_APB2RSTR REG32(STM32_RCC + 0x24U)
 #define RCC_AHB1ENR REG32(STM32_RCC + 0x30U)
+#define RCC_AHB2ENR REG32(STM32_RCC + 0x34U)
 #define RCC_APB1ENR REG32(STM32_RCC + 0x40U)
 #define RCC_APB2ENR REG32(STM32_RCC + 0x44U)
 
@@ -114,6 +116,19 @@
 #define USART5_RSTR RCC_APB1RSTR
 #define USART5_BIT (1U << 20)
 #define USART5_CLK stm32_pclk1
+
+/* USB: OTG_FS, 48 MHz from the PLL's Q output (needs the crystal).  VBUS sensing is off: the F405/
+ * F407 core takes GCCFG.NOVBUSSENS; F446/F412-class cores (MUBL_F4_OTG_VBDEN) the B-session
+ * override instead. */
+#define STM32_OTG 0x50000000U
+#define OTG_CLOCK_ENR RCC_AHB2ENR
+#define OTG_RSTR RCC_AHB2RSTR
+#define OTG_CLOCK_BIT (1U << 7)
+#ifdef MUBL_F4_OTG_VBDEN
+#define STM32_OTG_VBDEN 1
+#else
+#define STM32_OTG_VBDEN 0
+#endif
 
 extern uint32_t stm32_sysclk, stm32_pclk1, stm32_pclk2;
 

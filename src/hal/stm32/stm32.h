@@ -185,9 +185,10 @@
 #define MUBL_CAT3_(a, b, c) a##b##c
 #define MUBL_CAT3(a, b, c) MUBL_CAT3_(a, b, c)
 
-/* Clocks (family.c) */
+/* Clocks (clock.c) */
 void stm32_clock_init(void);
 void stm32_clock_deinit(void);
+bool stm32_usb_clock(bool on);                      /* the 48 MHz USB clock and its trimming: false if none */
 /* Pins (gpio.c) */
 void stm32_pin_af(uint16_t pin, bool open_drain, bool pull_up);
 void stm32_pin_output(uint16_t pin, bool level);

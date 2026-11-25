@@ -16,7 +16,8 @@
 #define MUBL_LINK_DRONECAN 1
 #define MUBL_LINK_SERIAL 2      /* the PX4/ArduPilot serial bootloader protocol (uploader.py, QGC, MP) */
 #define MUBL_LINK_SRXL2 3       /* Spektrum SRXL2: standard handshake plus the µBL update packet */
-#define MUBL_LINK_COUNT 4       /* one past the highest identifier */
+#define MUBL_LINK_USB 4         /* the serial protocol over USB CDC-ACM */
+#define MUBL_LINK_COUNT 5       /* one past the highest identifier */
 
 /* Application image formats the bootloader accepts (MUBL_IMAGE_FORMATS, a mask). */
 #define MUBL_IMG_RAW 1          /* no descriptor: plausible vector table, written by µBL (first block last) */

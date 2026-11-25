@@ -25,6 +25,12 @@ void srxl2_rx(uint8_t byte, uint32_t now);
 void srxl2_stop(void);
 #endif
 
+#if MUBL_USB
+void usb_start(void);                    /* the serial protocol over USB (proto_serial.c) */
+void usb_poll(uint32_t now);
+void usb_stop(void);
+#endif
+
 /* Position of a link in MUBL_LINK_PRIORITY (0 is the highest), or 0xFF if it is not listed. */
 uint8_t mubl_rank(uint8_t link);
 

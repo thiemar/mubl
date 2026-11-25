@@ -4,6 +4,8 @@
  *
  *   sim_pty PORT [APP_IMAGE] [FLASH_DUMP]
  *
+ * PORT is a UART port number, or "usb" for the CDC-ACM port behind the simulated USB host (the
+ * cable is plugged in at power-on).
  * Prints the terminal's path on stdout, then runs until the simulated bootloader starts the
  * application, a second passes, or it is killed.  On exit it writes the application region to
  * FLASH_DUMP and prints "app <entry>" if the application was started.
@@ -28,6 +30,9 @@ uint32_t sim_app_entry(void);
 uint32_t sim_app_size(void);
 void sim_uart_send(int port, const uint8_t* d, int n, uint32_t baud);
 int sim_uart_recv(int port, uint8_t* out, int max, uint32_t baud);
+void sim_usb_plug(int on);
+void sim_usb_send(const uint8_t* d, int n);
+int sim_usb_recv(uint8_t* out, int max);
 
 static uint64_t now_ms(void)
 {
@@ -42,7 +47,8 @@ int main(int argc, char** argv)
         fprintf(stderr, "usage: sim_pty PORT [APP_IMAGE] [FLASH_DUMP]\n");
         return 2;
     }
-    const int port = atoi(argv[1]);
+    const int usb = strcmp(argv[1], "usb") == 0;
+    const int port = usb ? 0 : atoi(argv[1]);
     sim_reset_all();
     if (argc > 2 && strcmp(argv[2], "-") != 0) {
         FILE* f = fopen(argv[2], "rb");
@@ -74,17 +80,24 @@ int main(int argc, char** argv)
     printf("%s\n", name);
     fflush(stdout);
 
+    if (usb) sim_usb_plug(1);
     sim_power_on(0);
     uint64_t sim_t = now_ms(), app_at = 0;
     for (;;) {
         uint8_t buf[4096];
         const ssize_t n = read(m, buf, sizeof buf);
-        if (n > 0) sim_uart_send(port, buf, (int)n, 0);
+        if (n > 0) {
+            if (usb) {
+                sim_usb_send(buf, (int)n);
+            } else {
+                sim_uart_send(port, buf, (int)n, 0);
+            }
+        }
         const uint64_t real = now_ms();
         while (sim_t < real) {
             sim_t++;
             sim_run(1);
-            const int k = sim_uart_recv(port, buf, sizeof buf, 0);
+            const int k = usb ? sim_usb_recv(buf, sizeof buf) : sim_uart_recv(port, buf, sizeof buf, 0);
             if (k > 0) (void)!write(m, buf, (size_t)k);
         }
         if (sim_state() == 2 && app_at == 0) app_at = real;

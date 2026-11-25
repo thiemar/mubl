@@ -22,6 +22,10 @@
 
 #include "handoff.h"
 #include "hal/hal.h"
+#if MUBL_USB
+#include "hal/host/usb_model.h"
+#include "hal/host/usb_host.h"
+#endif
 
 #define G MUBL_FLASH_GRANULE
 #define FLASH_SIZE SIM_FLASH_SIZE
@@ -386,8 +390,21 @@ static void guarded_run(int initialise)
 
 static void boot(void)
 {
+#if MUBL_USB
+    hw_stop();                           /* a reset leaves the peripheral in reset, detached */
+#endif
     guarded_run(1);
 }
+
+#if MUBL_USB
+/* The USB host's view of the device's main loop: one step, while it is the bootloader. */
+static int device_step(void)
+{
+    if (sim.state != STATE_BOOTLOADER) return 0;
+    guarded_run(0);
+    return sim.state == STATE_BOOTLOADER;
+}
+#endif
 
 /* The application, as far as tests need one: a DroneCAN node reporting OPERATIONAL. */
 static void app_tick(void)
@@ -418,6 +435,10 @@ void sim_reset_all(void)
     memset(ram, 0, sizeof ram);
     for (int i = 0; i < 12; i++) sim.uid[i] = (uint8_t)(0xA0 + i);
     sim.seed = 1;
+#if MUBL_USB
+    usbm_reset_all();
+    usb_host_reset(device_step);
+#endif
 }
 
 void sim_set_uid(const uint8_t* uid) { memcpy(sim.uid, uid, 16); }
@@ -467,11 +488,19 @@ int sim_run(uint32_t ms)
 {
     for (uint32_t i = 0; i < ms && sim.state != STATE_OFF; i++) {
         sim.now++;
+#if MUBL_USB
+        usb_host_frame(sim.now);
+#endif
         if (sim.state == STATE_APP) {
             app_tick();
             continue;
         }
-        for (int k = 0; k < 4 && sim.state == STATE_BOOTLOADER; k++) guarded_run(0);
+        for (int k = 0; k < 4 && sim.state == STATE_BOOTLOADER; k++) {
+#if MUBL_USB
+            usb_host_poll();
+#endif
+            guarded_run(0);
+        }
     }
     return sim.state;
 }

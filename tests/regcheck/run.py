@@ -93,6 +93,74 @@ F0F3_RCC = [reg('&RCC_' + f, 'RCC_TypeDef', 'RCC_BASE', f) for f in ('CR', 'CFGR
                                                               reg('&FLASH_OBR', 'FLASH_TypeDef', 'FLASH_R_BASE', 'OBR'),
                                                               ('FLASH_OBR_IWDG_SW', 'FLASH_OBR_IWDG_SW')]
 
+USB_FS = [('USB_EPR(1)', 'offsetof(USB_TypeDef, EP1R)'), ('USB_EPR(3)', 'offsetof(USB_TypeDef, EP3R)')] + \
+    [reg('USB_' + f, 'USB_TypeDef', '0', f) for f in ('CNTR', 'ISTR', 'DADDR', 'BTABLE')] + \
+    same('USB_CNTR_FRES', 'USB_DADDR_EF', 'USB_ISTR_SOF', 'USB_ISTR_EP_ID') + \
+    [('ISTR_CTR', 'USB_ISTR_CTR'), ('ISTR_RESET', 'USB_ISTR_RESET'), ('ISTR_SOF', 'USB_ISTR_SOF'),
+     ('ISTR_EP_ID', 'USB_ISTR_EP_ID'),
+     ('EPR_CTR_RX', 'USB_EP_CTR_RX'), ('EPR_DTOG_RX', 'USB_EP_DTOG_RX'), ('EPR_STAT_RX', 'USB_EPRX_STAT'),
+     ('EPR_SETUP', 'USB_EP_SETUP'), ('EPR_TYPE', 'USB_EP_T_FIELD'), ('EPR_KIND', 'USB_EP_KIND'),
+     ('EPR_CTR_TX', 'USB_EP_CTR_TX'), ('EPR_DTOG_TX', 'USB_EP_DTOG_TX'), ('EPR_STAT_TX', 'USB_EPTX_STAT'),
+     ('EPR_EA', 'USB_EPADDR_FIELD'), ('EPR_TYPE_BULK', 'USB_EP_BULK'), ('EPR_TYPE_CONTROL', 'USB_EP_CONTROL'),
+     ('EPR_TYPE_INTERRUPT', 'USB_EP_INTERRUPT'),
+     ('RX_DIS', 'USB_EP_RX_DIS'), ('RX_STALL', 'USB_EP_RX_STALL'), ('RX_NAK', 'USB_EP_RX_NAK'),
+     ('RX_VALID', 'USB_EP_RX_VALID'), ('TX_DIS', 'USB_EP_TX_DIS'), ('TX_STALL', 'USB_EP_TX_STALL'),
+     ('TX_NAK', 'USB_EP_TX_NAK'), ('TX_VALID', 'USB_EP_TX_VALID'),
+     ('STM32_USB', 'USB_BASE'), ('STM32_USB_PMA', 'USB_PMAADDR'), ('USB_CLOCK_BIT', 'RCC_APB1ENR_USBEN'),
+     ('USB_CLOCK_BIT', 'RCC_APB1RSTR_USBRST'), ('&USB_CLOCK_ENR', '(RCC_BASE + offsetof(RCC_TypeDef, APB1ENR))'),
+     ('&USB_RSTR', '(RCC_BASE + offsetof(RCC_TypeDef, APB1RSTR))')]
+
+
+def otg(core_vbden):
+    g = 'USB_OTG_GlobalTypeDef'
+    checks = [reg('OTG_' + f, g, '0', f) for f in ('GOTGCTL', 'GAHBCFG', 'GUSBCFG', 'GRSTCTL', 'GINTSTS', 'GINTMSK',
+                                                   'GRXSTSP', 'GRXFSIZ', 'GCCFG')] + \
+        [('OTG_DIEPTXF0', 'offsetof(%s, DIEPTXF0_HNPTXFSIZ)' % g), ('OTG_DIEPTXF(1)', 'offsetof(%s, DIEPTXF[0])' % g),
+         ('OTG_DIEPTXF(3)', 'offsetof(%s, DIEPTXF[2])' % g)] + \
+        [('OTG_' + f, 'USB_OTG_DEVICE_BASE + offsetof(USB_OTG_DeviceTypeDef, %s)' % f)
+         for f in ('DCFG', 'DCTL', 'DSTS', 'DIEPMSK', 'DOEPMSK', 'DAINTMSK')] + \
+        [('OTG_DIEP%s(2)' % f, 'USB_OTG_IN_ENDPOINT_BASE + 2 * USB_OTG_EP_REG_SIZE + offsetof(USB_OTG_INEndpointTypeDef, DIEP%s)' % f)
+         for f in ('CTL', 'INT', 'TSIZ')] + \
+        [('OTG_DTXFSTS(3)', 'USB_OTG_IN_ENDPOINT_BASE + 3 * USB_OTG_EP_REG_SIZE + offsetof(USB_OTG_INEndpointTypeDef, DTXFSTS)')] + \
+        [('OTG_DOEP%s(1)' % f, 'USB_OTG_OUT_ENDPOINT_BASE + USB_OTG_EP_REG_SIZE + offsetof(USB_OTG_OUTEndpointTypeDef, DOEP%s)' % f)
+         for f in ('CTL', 'INT', 'TSIZ')] + \
+        [('OTG_PCGCCTL', 'USB_OTG_PCGCCTL_BASE'), ('OTG_FIFO(2)', 'USB_OTG_FIFO_BASE + 2 * USB_OTG_FIFO_SIZE')] + \
+        [('GUSBCFG_PHYSEL', 'USB_OTG_GUSBCFG_PHYSEL'), ('GUSBCFG_TRDT', 'USB_OTG_GUSBCFG_TRDT'),
+         ('GUSBCFG_TRDT_POS', 'USB_OTG_GUSBCFG_TRDT_Pos'), ('GUSBCFG_FHMOD', 'USB_OTG_GUSBCFG_FHMOD'),
+         ('GUSBCFG_FDMOD', 'USB_OTG_GUSBCFG_FDMOD'), ('GRSTCTL_CSRST', 'USB_OTG_GRSTCTL_CSRST'),
+         ('GRSTCTL_RXFFLSH', 'USB_OTG_GRSTCTL_RXFFLSH'), ('GRSTCTL_TXFFLSH', 'USB_OTG_GRSTCTL_TXFFLSH'),
+         ('GRSTCTL_TXFNUM_POS', 'USB_OTG_GRSTCTL_TXFNUM_Pos'), ('GRSTCTL_AHBIDL', 'USB_OTG_GRSTCTL_AHBIDL'),
+         ('GINTSTS_CMOD', 'USB_OTG_GINTSTS_CMOD'), ('GINTSTS_SOF', 'USB_OTG_GINTSTS_SOF'),
+         ('GINTSTS_RXFLVL', 'USB_OTG_GINTSTS_RXFLVL'), ('GINTSTS_USBRST', 'USB_OTG_GINTSTS_USBRST'),
+         ('GINTSTS_ENUMDNE', 'USB_OTG_GINTSTS_ENUMDNE'), ('GINTSTS_GONAKEFF', 'USB_OTG_GINTSTS_BOUTNAKEFF'),
+         ('GRXSTS_EPNUM', 'USB_OTG_GRXSTSP_EPNUM'), ('GRXSTS_BCNT', 'USB_OTG_GRXSTSP_BCNT'),
+         ('GRXSTS_PKTSTS', 'USB_OTG_GRXSTSP_PKTSTS'), ('GRXSTS_PKTSTS_POS', 'USB_OTG_GRXSTSP_PKTSTS_Pos'),
+         ('GCCFG_PWRDWN', 'USB_OTG_GCCFG_PWRDWN'),
+         ('DCFG_DSPD_FS', 'USB_OTG_DCFG_DSPD'), ('DCFG_DAD', 'USB_OTG_DCFG_DAD'), ('DCFG_DAD_POS', 'USB_OTG_DCFG_DAD_Pos'),
+         ('DCTL_SDIS', 'USB_OTG_DCTL_SDIS'), ('DCTL_CGINAK', 'USB_OTG_DCTL_CGINAK'), ('DCTL_SGONAK', 'USB_OTG_DCTL_SGONAK'),
+         ('DCTL_CGONAK', 'USB_OTG_DCTL_CGONAK'),
+         ('EPCTL_MPSIZ', 'USB_OTG_DIEPCTL_MPSIZ'), ('EPCTL_USBAEP', 'USB_OTG_DIEPCTL_USBAEP'),
+         ('EPCTL_NAKSTS', 'USB_OTG_DIEPCTL_NAKSTS'), ('EPCTL_EPTYP_POS', 'USB_OTG_DIEPCTL_EPTYP_Pos'),
+         ('EPCTL_STALL', 'USB_OTG_DIEPCTL_STALL'), ('EPCTL_TXFNUM_POS', 'USB_OTG_DIEPCTL_TXFNUM_Pos'),
+         ('EPCTL_CNAK', 'USB_OTG_DIEPCTL_CNAK'), ('EPCTL_SNAK', 'USB_OTG_DIEPCTL_SNAK'),
+         ('EPCTL_SD0PID', 'USB_OTG_DIEPCTL_SD0PID_SEVNFRM'), ('EPCTL_EPDIS', 'USB_OTG_DIEPCTL_EPDIS'),
+         ('EPCTL_EPENA', 'USB_OTG_DIEPCTL_EPENA'), ('EPCTL_STALL', 'USB_OTG_DOEPCTL_STALL'),
+         ('EPCTL_SD0PID', 'USB_OTG_DOEPCTL_SD0PID_SEVNFRM'), ('EPCTL_EPENA', 'USB_OTG_DOEPCTL_EPENA'),
+         ('EPCTL_EPDIS', 'USB_OTG_DOEPCTL_EPDIS'), ('EPCTL_CNAK', 'USB_OTG_DOEPCTL_CNAK'),
+         ('EPCTL_SNAK', 'USB_OTG_DOEPCTL_SNAK'), ('EPCTL_USBAEP', 'USB_OTG_DOEPCTL_USBAEP'),
+         ('EPINT_XFRC', 'USB_OTG_DIEPINT_XFRC'), ('EPINT_EPDISD', 'USB_OTG_DIEPINT_EPDISD'),
+         ('EPINT_XFRC', 'USB_OTG_DOEPINT_XFRC'), ('EPINT_EPDISD', 'USB_OTG_DOEPINT_EPDISD'),
+         ('DOEPINT_STUP', 'USB_OTG_DOEPINT_STUP'), ('DIEPINT_INEPNE', 'USB_OTG_DIEPINT_INEPNE'),
+         ('EPTSIZ_PKTCNT_POS', 'USB_OTG_DIEPTSIZ_PKTCNT_Pos'), ('EPTSIZ_PKTCNT_POS', 'USB_OTG_DOEPTSIZ_PKTCNT_Pos'),
+         ('DOEPTSIZ0_STUPCNT', 'USB_OTG_DOEPTSIZ_STUPCNT'), ('DTXFSTS_INEPTFSAV', 'USB_OTG_DTXFSTS_INEPTFSAV')]
+    if core_vbden:
+        checks += [('GCCFG_VBDEN', 'USB_OTG_GCCFG_VBDEN'), ('GOTGCTL_BVALOEN', 'USB_OTG_GOTGCTL_BVALOEN'),
+                   ('GOTGCTL_BVALOVAL', 'USB_OTG_GOTGCTL_BVALOVAL')]
+    else:
+        checks += [('GCCFG_NOVBUSSENS', 'USB_OTG_GCCFG_NOVBUSSENS')]
+    return checks
+
+
 def crc_unit(enr, bit):
     return [('STM32_CRC', 'CRC_BASE'), reg('CRC_DR', 'CRC_TypeDef', '0', 'DR'), reg('CRC_CR', 'CRC_TypeDef', '0', 'CR'),
             reg('CRC_INIT', 'CRC_TypeDef', '0', 'INIT'), ('CRC_CR_RESET', 'CRC_CR_RESET'),
@@ -109,7 +177,12 @@ PARTS = {
                         ('RCC_CFGR_SW_HSI48', 'RCC_CFGR_SW_HSI48'), ('RCC_APB2ENR_SYSCFGEN', 'RCC_APB2ENR_SYSCFGCOMPEN'),
                         ('STM32_SYSCFG', 'SYSCFG_BASE'), ('SYSCFG_CFGR1_MEM_MODE', 'SYSCFG_CFGR1_MEM_MODE'),
                         ('SYSCFG_CFGR1_PA11_PA12_RMP', 'SYSCFG_CFGR1_PA11_PA12_RMP'),
-                        ('STM32_IDCODE', '(DBGMCU_BASE + offsetof(DBGMCU_TypeDef, IDCODE))')] +
+                        ('STM32_IDCODE', '(DBGMCU_BASE + offsetof(DBGMCU_TypeDef, IDCODE))')] + USB_FS + [
+                        reg('USB_BCDR', 'USB_TypeDef', '0', 'BCDR'), ('USB_BCDR_DPPU', 'USB_BCDR_DPPU'),
+                        reg('&RCC_CFGR3', 'RCC_TypeDef', 'RCC_BASE', 'CFGR3'), ('RCC_CFGR3_USBSW', 'RCC_CFGR3_USBSW'),
+                        ('STM32_CRS', 'CRS_BASE'), reg('&CRS_CR', 'CRS_TypeDef', 'CRS_BASE', 'CR'),
+                        ('CRS_CR_CEN', 'CRS_CR_CEN'), ('CRS_CR_AUTOTRIMEN', 'CRS_CR_AUTOTRIMEN'),
+                        ('CRS_BIT', 'RCC_APB1ENR_CRSEN'), ('CRS_BIT', 'RCC_APB1RSTR_CRSRST')] +
                     crc_unit('AHBENR', 'RCC_AHBENR_CRCEN')),
     'stm32f303xc': ('F3', 'STM32F3xx', 'core_cm4',
                     CORE + CORE_M3 + GPIO + IWDG + USART_V2 + BXCAN + F0F3_RCC + [
@@ -118,7 +191,7 @@ PARTS = {
                         ('USART3_BASE', 'USART3_BASE'), ('USART3_BIT', 'RCC_APB1ENR_USART3EN'),
                         ('USART4_BASE', 'UART4_BASE'), ('USART4_BIT', 'RCC_APB1ENR_UART4EN'),
                         ('USART5_BASE', 'UART5_BASE'), ('USART5_BIT', 'RCC_APB1ENR_UART5EN'),
-                        ('STM32_IDCODE', '(DBGMCU_BASE + offsetof(DBGMCU_TypeDef, IDCODE))')] +
+                        ('STM32_IDCODE', '(DBGMCU_BASE + offsetof(DBGMCU_TypeDef, IDCODE))')] + USB_FS +
                     crc_unit('AHBENR', 'RCC_AHBENR_CRCEN')),
 }
 
@@ -146,8 +219,11 @@ F4 = CORE + CORE_M3 + GPIO + IWDG + USART_V1 + BXCAN + \
      ('USART4_BIT', 'RCC_APB1ENR_UART4EN'), ('USART5_BIT', 'RCC_APB1ENR_UART5EN')] + \
     [reg('&FLASH_' + f, 'FLASH_TypeDef', 'FLASH_R_BASE', f) for f in ('ACR', 'KEYR', 'SR', 'CR', 'OPTCR')] + \
     [('FLASH_OPTCR_WDG_SW', 'FLASH_OPTCR_WDG_SW')]
-PARTS['stm32f405xx'] = ('F4', 'STM32F4xx', 'core_cm4', F4 + [('RCC_PLLCFGR_RESET', '0x24003010U')])
-PARTS['stm32f446xx'] = ('F4', 'STM32F4xx', 'core_cm4', F4 + [('RCC_PLLCFGR_RESET & 0x70000000U', 'RCC_PLLCFGR_PLLR_1')])
+F4 += [('STM32_OTG', 'USB_OTG_FS_PERIPH_BASE'), ('OTG_CLOCK_BIT', 'RCC_AHB2ENR_OTGFSEN'),
+       ('OTG_CLOCK_BIT', 'RCC_AHB2RSTR_OTGFSRST'), ('&RCC_AHB2ENR', '(RCC_BASE + offsetof(RCC_TypeDef, AHB2ENR))'),
+       ('&RCC_AHB2RSTR', '(RCC_BASE + offsetof(RCC_TypeDef, AHB2RSTR))')]
+PARTS['stm32f405xx'] = ('F4', 'STM32F4xx', 'core_cm4', F4 + otg(False) + [('RCC_PLLCFGR_RESET', '0x24003010U')])
+PARTS['stm32f446xx'] = ('F4', 'STM32F4xx', 'core_cm4', F4 + otg(True) + [('RCC_PLLCFGR_RESET & 0x70000000U', 'RCC_PLLCFGR_PLLR_1')])
 
 FDCAN = [reg('FDCAN_' + f, 'FDCAN_GlobalTypeDef', '0', f) for f in (
     'CCCR', 'NBTP', 'DBTP', 'PSR', 'GFC', 'SIDFC', 'XIDFC', 'XIDAM', 'RXF0C', 'RXF0S', 'RXF0A', 'RXESC', 'TXBC',
@@ -187,12 +263,26 @@ H7 = CORE + CORE_M3 + GPIO + IWDG + usart_v2('USART_ISR_RXNE_RXFNE', 'USART_ISR_
      ('USART4_BIT', 'RCC_APB1LENR_UART4EN'), ('USART5_BIT', 'RCC_APB1LENR_UART5EN'),
      ('USART7_BIT', 'RCC_APB1LENR_UART7EN'), ('USART8_BIT', 'RCC_APB1LENR_UART8EN')] + \
     crc_unit('AHB4ENR', 'RCC_AHB4ENR_CRCEN')
+H7 += otg(True) + [
+    reg('&RCC_' + f, 'RCC_TypeDef', 'RCC_BASE', f) for f in ('D2CCIP2R', 'AHB1RSTR', 'AHB1ENR')] + [
+    ('RCC_D2CCIP2R_USBSEL', 'RCC_D2CCIP2R_USBSEL'), ('RCC_CR_HSI48ON', 'RCC_CR_HSI48ON'), ('RCC_CR_HSI48RDY', 'RCC_CR_HSI48RDY'),
+    ('PWR_CR3_USB33DEN', 'PWR_CR3_USB33DEN'), ('PWR_CR3_USB33RDY', 'PWR_CR3_USB33RDY'),
+    ('STM32_CRS', 'CRS_BASE'), reg('&CRS_CR', 'CRS_TypeDef', 'CRS_BASE', 'CR'), reg('&CRS_CFGR', 'CRS_TypeDef', 'CRS_BASE', 'CFGR'),
+    ('CRS_CR_CEN', 'CRS_CR_CEN'), ('CRS_CR_AUTOTRIMEN', 'CRS_CR_AUTOTRIMEN'), ('CRS_CFGR_SYNCSRC_POS', 'CRS_CFGR_SYNCSRC_Pos'),
+    ('CRS_BIT', 'RCC_APB1HENR_CRSEN'), ('CRS_BIT', 'RCC_APB1HRSTR_CRSRST'),
+    ('STM32_OTG', 'USB1_OTG_HS_PERIPH_BASE'), ('OTG_CLOCK_BIT', 'RCC_AHB1ENR_USB1OTGHSEN'),
+    ('OTG_CLOCK_BIT', 'RCC_AHB1RSTR_USB1OTGHSRST'), ('CRS_SYNC_USB << CRS_CFGR_SYNCSRC_POS', 'CRS_CFGR_SYNCSRC_1')]
 PARTS['stm32h743xx'] = ('H7', 'STM32H7xx', 'core_cm7', H7 + [
     ('&FLASH_KEYR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, KEYR2))'),
     ('&FLASH_CR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, CR2))'),
     ('&FLASH_SR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, SR2))'),
     ('&FLASH_CCR(1)', '(FLASH_R_BASE + offsetof(FLASH_TypeDef, CCR2))'), ('0x2', 'PWR_CR3_LDOEN')])
 PARTS['stm32h735xx'] = ('H7', 'STM32H7xx', 'core_cm7', H7 + [('0x4', 'PWR_CR3_SMPSEN')])
+# The H74x's second core, USB2 OTG_FS (part:defines checks the same header with other board settings).
+PARTS['stm32h743xx:MUBL_USB_OTG_INSTANCE=2'] = ('H7', 'STM32H7xx', 'core_cm7', [
+    ('STM32_OTG', 'USB2_OTG_FS_PERIPH_BASE'), ('OTG_CLOCK_BIT', 'RCC_AHB1ENR_USB2OTGFSEN'),
+    ('OTG_CLOCK_BIT', 'RCC_AHB1RSTR_USB2OTGFSRST'),
+    ('CRS_SYNC_USB << CRS_CFGR_SYNCSRC_POS', '(CRS_CFGR_SYNCSRC_1 | CRS_CFGR_SYNCSRC_0)')])
 
 BOARD = '''#define MUBL_FAMILY MUBL_FAMILY_%s
 #define MUBL_BL_SIZE 0x20000
@@ -214,15 +304,17 @@ def main():
         return 0
     tmp = tempfile.mkdtemp()
     failed = 0
-    for part, (family, folder, core, checks) in sorted(PARTS.items()):
+    for name, (family, folder, core, checks) in sorted(PARTS.items()):
+        part, _, extra = name.partition(':')
         with open(os.path.join(tmp, 'board.h'), 'w') as f:
-            f.write(BOARD % family)
+            f.write(BOARD % family + ''.join('#define %s %s\n' % tuple(d.split('=')) for d in extra.split(',') if d))
         # 1. our side, as numbers
         marker = '\n'.join('@@%d@@ (%s)' % (i, ours[1:] if ours.startswith('&') else ours)
                            for i, (ours, _) in enumerate(checks))
         src = os.path.join(tmp, 'ours.c')
         with open(src, 'w') as f:
-            f.write('#define REG32(a) (a)\n#include "stm32.h"\n' + marker + '\n')
+            f.write('#define REG32(a) (a)\n#include "stm32.h"\n#include "hal/usb/usb_fs_regs.h"\n'
+                    '#include "hal/usb/usb_otg_regs.h"\n' + marker + '\n')
         out = subprocess.check_output([args.cc, '-E', '-P', '-I' + tmp, '-I' + os.path.join(ROOT, 'src'),
                                        '-I' + os.path.join(ROOT, 'src', 'hal', 'stm32'), src]).decode()
         values = {}
@@ -242,7 +334,7 @@ def main():
                             '-I' + os.path.join(args.cmsis, 'ARM', 'CMSIS', 'Core', 'Include'), check],
                            capture_output=True, text=True)
         errors = [l for l in r.stderr.splitlines() if 'static assertion failed' in l or 'error' in l]
-        print('%-12s %3d checks: %s' % (part, len(checks), 'ok' if r.returncode == 0 else 'FAILED'))
+        print('%-12s %3d checks: %s' % (name, len(checks), 'ok' if r.returncode == 0 else 'FAILED'))
         for e in errors[:20]:
             print('    ' + e.split('error: ', 1)[-1])
         failed += r.returncode != 0

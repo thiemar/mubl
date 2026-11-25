@@ -34,6 +34,7 @@
 #define MUBL_LINK_DRONECAN 1
 #define MUBL_LINK_SERIAL 2
 #define MUBL_LINK_SRXL2 3
+#define MUBL_LINK_USB 4
 
 typedef struct {
     uint8_t link;              /* MUBL_LINK_*: the link the bootloader last used, 0 if none */

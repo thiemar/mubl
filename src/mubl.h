@@ -57,6 +57,7 @@ enum {
     MUBL_STAY_HOLD_PIN = 3,
     MUBL_STAY_HOST = 4,           /* a host started talking to a link */
     MUBL_STAY_BOOT_LOOP = 5,      /* the application did not confirm MUBL_MAX_BOOT_ATTEMPTS boots */
+    MUBL_STAY_USB = 6,            /* a USB host is connected (MUBL_USB_STAY) */
 };
 
 /* What the application passed in (handoff.c), consumed by the links at start. */
@@ -88,6 +89,7 @@ typedef struct {
 uint32_t mubl_now(void);                   /* milliseconds since reset */
 void mubl_detected(uint8_t link);          /* a peer is on this link */
 void mubl_hold(uint8_t link);              /* a host is using this link: do not boot on timeout */
+void mubl_usb_host(bool present);          /* a USB host appeared or went away (MUBL_USB_STAY) */
 void mubl_boot(uint32_t delay_ms);         /* boot the application if valid, after delay_ms */
 void mubl_restart(uint32_t delay_ms);      /* reset the MCU after delay_ms */
 const mubl_app_t* mubl_app(void);

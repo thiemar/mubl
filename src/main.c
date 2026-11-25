@@ -7,8 +7,8 @@
  * With a valid application and no reason to stay, the application starts MUBL_BOOT_DELAY_MS
  * after reset unless a host has started using a link by then (mubl_hold) or an update is running.
  * The bootloader stays when there is no valid application, when the application asked it to, when
- * the hold pin is asserted, or when the application failed to confirm MUBL_MAX_BOOT_ATTEMPTS
- * boots in a row.
+ * the hold pin is asserted, when the application failed to confirm MUBL_MAX_BOOT_ATTEMPTS
+ * boots in a row, or while a USB host is connected (MUBL_USB_STAY).
  *
  * Link priority (MUBL_LINK_PRIORITY, highest first) decides the order links are started and
  * polled, which link may speak first on a shared UART, and with MUBL_LINK_EXCLUSIVE, which links
@@ -60,6 +60,9 @@ static void link_start(uint8_t id)
 #if MUBL_SRXL2
     case MUBL_LINK_SRXL2: srxl2_start(); break;
 #endif
+#if MUBL_USB
+    case MUBL_LINK_USB: usb_start(); break;
+#endif
     default: return;
     }
     m.running |= (uint8_t)(1U << id);
@@ -79,6 +82,9 @@ static void link_stop(uint8_t id)
 #if MUBL_SRXL2
     case MUBL_LINK_SRXL2: srxl2_stop(); break;
 #endif
+#if MUBL_USB
+    case MUBL_LINK_USB: usb_stop(); break;
+#endif
     default: break;
     }
 }
@@ -94,6 +100,9 @@ static void link_poll(uint8_t id, uint32_t now)
 #endif
 #if MUBL_SRXL2
     case MUBL_LINK_SRXL2: srxl2_poll(now); break;
+#endif
+#if MUBL_USB
+    case MUBL_LINK_USB: usb_poll(now); break;
 #endif
     default: break;
     }
@@ -194,6 +203,15 @@ void mubl_hold(uint8_t link)
 {
     m.session.link = link;
     if (m.stay == MUBL_STAY_NO) m.stay = MUBL_STAY_HOST;
+}
+
+void mubl_usb_host(bool present)
+{
+    if (present && m.stay == MUBL_STAY_NO) {
+        m.stay = MUBL_STAY_USB;
+    } else if (!present && m.stay == MUBL_STAY_USB) {
+        m.stay = MUBL_STAY_NO;               /* boots now if the boot delay has passed */
+    }
 }
 
 void mubl_boot(uint32_t delay_ms)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flash, RAM and worst-case stack of every board, and of the F042 build with each link alone.
+"""Flash, RAM and worst-case stack of every board, and of F042 builds with other sets of links.
 
     tools/sizes.py [--markdown]
 
@@ -21,6 +21,12 @@ VARIANTS = [
     ('f042-node', 'serial', '-DMUBL_DRONECAN=0 -DMUBL_SERIAL=1 -DMUBL_SRXL2=0'),
     ('f042-node', 'SRXL2', '-DMUBL_DRONECAN=0 -DMUBL_SERIAL=0 -DMUBL_SRXL2=1'),
     ('f042-node', 'serial + SRXL2', '-DMUBL_DRONECAN=0 -DMUBL_SERIAL=1 -DMUBL_SRXL2=1'),
+    ('f042-usb', 'USB + DroneCAN', '-DMUBL_DRONECAN=1'),
+    ('f042-node', 'serial + USB', '-DMUBL_DRONECAN=0 -DMUBL_SRXL2=0 -DMUBL_USB=1 '
+                                  '-DMUBL_LINK_PRIORITY=MUBL_LINK_USB,MUBL_LINK_SERIAL'),
+    ('f042-node', 'all four', '-DMUBL_USB=1'),
+    ('f405-node', 'without USB', '-DMUBL_USB=0'),
+    ('h743-node', 'without USB', '-DMUBL_USB=0'),
 ]
 
 

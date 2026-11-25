@@ -58,6 +58,9 @@
 #ifndef MUBL_SRXL2
 #define MUBL_SRXL2 1
 #endif
+#ifndef MUBL_USB
+#define MUBL_USB 1
+#endif
 #define MUBL_UART0_INSTANCE 1     /* port 0: single wire, shared by SRXL2 and serial by default */
 #define MUBL_UART1_INSTANCE 2
 #ifndef MUBL_COMPAT_AP_PERIPH

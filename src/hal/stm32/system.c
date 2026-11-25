@@ -268,6 +268,12 @@ static uint32_t used_ports(void)
 #ifdef MUBL_LED_PIN
     m |= PORT_BIT(MUBL_LED_PIN);
 #endif
+#ifdef MUBL_USB_DP_PIN
+    m |= PORT_BIT(MUBL_USB_DM_PIN) | PORT_BIT(MUBL_USB_DP_PIN);
+#endif
+#ifdef MUBL_USB_PULLUP_PIN
+    m |= PORT_BIT(MUBL_USB_PULLUP_PIN);
+#endif
 #ifdef MUBL_HOLD_PIN
     m |= PORT_BIT(MUBL_HOLD_PIN);
 #endif

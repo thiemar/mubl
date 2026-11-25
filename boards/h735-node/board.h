@@ -1,7 +1,7 @@
 /*
  * STM32H735 (RM0468): 1 MiB single-bank flash, direct SMPS supply, 25 MHz crystal, CAN FD.
  * DroneCAN over CAN FD (5 Mbit/s data phase) on FDCAN1 PD0/PD1; serial protocol on USART1
- * PA9/PA10.  Check the supply and pins against your board before flashing: a wrong MUBL_H7_PWR_CR3
+ * PA9/PA10 and USB (OTG_HS with its full-speed PHY, PA11/PA12).  Check the supply and pins against your board before flashing: a wrong MUBL_H7_PWR_CR3
  * can stop the part until power is removed.
  */
 #define MUBL_FAMILY MUBL_FAMILY_H7
@@ -19,7 +19,13 @@
 
 #define MUBL_DRONECAN 1
 #define MUBL_SERIAL 1
-#define MUBL_LINK_PRIORITY MUBL_LINK_DRONECAN, MUBL_LINK_SERIAL
+#ifndef MUBL_USB
+#define MUBL_USB 1
+#endif
+#define MUBL_LINK_PRIORITY MUBL_LINK_USB, MUBL_LINK_DRONECAN, MUBL_LINK_SERIAL
+#define MUBL_USB_OTG_INSTANCE 1                  /* USB1 OTG_HS, the only one on H72x/H73x */
+#define MUBL_USB_DM_PIN MUBL_PIN('A', 11, 10)
+#define MUBL_USB_DP_PIN MUBL_PIN('A', 12, 10)
 #define MUBL_CAN_FD 1
 #define MUBL_CAN_FD_DATA_BITRATE 5000000
 #define MUBL_CAN_BITRATE 1000000

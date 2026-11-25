@@ -72,10 +72,13 @@ static void pll_on(uint32_t cfgr, uint32_t mul)
     }
 }
 
+static bool on_hse;
+
 void stm32_clock_init(void)
 {
     FLASH_ACR = LATENCY | FLASH_ACR_PRFTBE;
-    if (start_hse()) {
+    on_hse = start_hse();
+    if (on_hse) {
         RCC_CFGR2 = PREDIV - 1U;
         pll_on(RCC_CFGR_PLLSRC_HSE_PREDIV, PLL_MUL);
         stm32_sysclk = SYSCLK;
@@ -113,6 +116,39 @@ void stm32_clock_deinit(void)
     FLASH_ACR = FLASH_ACR_PRFTBE;                   /* zero wait states (reset value) */
 }
 
+#if MUBL_USB
+#if MUBL_FAMILY == MUBL_FAMILY_F0
+MUBL_STATIC_ASSERT(MUBL_HSE_HZ != 0 || MUBL_F0_HSI48, "USB needs a crystal or HSI48 (MUBL_F0_HSI48)");
+
+/* 48 MHz from the crystal's PLL, or HSI48 kept within USB's tolerance by the CRS, which trims it
+ * against the host's start-of-frame packets (its reset configuration). */
+bool stm32_usb_clock(bool on)
+{
+    if (on && on_hse) {
+        RCC_CFGR3 |= RCC_CFGR3_USBSW;
+    } else if (on) {
+        RCC_CFGR3 &= ~RCC_CFGR3_USBSW;
+        RCC_APB1ENR |= CRS_BIT;
+        CRS_CR |= CRS_CR_AUTOTRIMEN | CRS_CR_CEN;
+    } else {
+        RCC_APB1RSTR |= CRS_BIT;
+        RCC_APB1RSTR &= ~CRS_BIT;
+        RCC_APB1ENR &= ~CRS_BIT;
+        RCC_CFGR3 &= ~RCC_CFGR3_USBSW;
+    }
+    return true;
+}
+#else
+/* PLL 72 MHz / 1.5 (USBPRE 0, as after reset).  Without the crystal (it did not start) the PLL
+ * runs from HSI at 64 MHz: no 48 MHz, so USB stays off the bus. */
+MUBL_STATIC_ASSERT(MUBL_HSE_HZ != 0, "USB on F3 needs a crystal");
+bool stm32_usb_clock(bool on)
+{
+    return !on || on_hse;
+}
+#endif
+#endif
+
 #elif MUBL_FAMILY == MUBL_FAMILY_F4
 
 #ifndef MUBL_SYSCLK_HZ
@@ -137,9 +173,12 @@ MUBL_STATIC_ASSERT(MUBL_SYSCLK_HZ % 1000000U == 0 && PLL_N >= 50U && PLL_N <= 43
                    "MUBL_SYSCLK_HZ cannot be made by the PLL");
 MUBL_STATIC_ASSERT(MUBL_HSE_HZ % 1000000 == 0, "MUBL_HSE_HZ must be a whole number of MHz");
 
+static bool on_hse;
+
 void stm32_clock_init(void)
 {
     const bool hse = start_hse();
+    on_hse = hse;
     const uint32_t m = hse ? MUBL_HSE_HZ / 1000000U : 16U;
     FLASH_ACR = LATENCY | FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
     RCC_CFGR = (PPRE(DIV_FOR(MUBL_APB1_MAX_HZ)) << RCC_CFGR_PPRE1_POS) |
@@ -174,6 +213,17 @@ void stm32_clock_deinit(void)
     FLASH_ACR = 0;
 }
 
+#if MUBL_USB
+/* The PLL's Q output: exactly 48 MHz only from a VCO that is a multiple of 48 MHz (168 MHz, not
+ * 180), and accurate enough only from the crystal. */
+MUBL_STATIC_ASSERT(PLL_N % PLL_Q == 0 && PLL_N / PLL_Q == 48, "USB needs a VCO of a multiple of 48 MHz (MUBL_SYSCLK_HZ)");
+MUBL_STATIC_ASSERT(MUBL_HSE_HZ != 0, "USB on F4 needs a crystal");
+bool stm32_usb_clock(bool on)
+{
+    return !on || on_hse;
+}
+#endif
+
 #elif MUBL_FAMILY == MUBL_FAMILY_H7
 
 void stm32_clock_init(void)
@@ -194,5 +244,31 @@ void stm32_clock_deinit(void)
     }
     RCC_CR &= ~RCC_CR_HSEBYP;                       /* writable once HSE is off */
 }
+
+#if MUBL_USB
+/* HSI48 for the OTG core, trimmed by the CRS from its start-of-frame packets; false if VDD33USB is
+ * not there. */
+bool stm32_usb_clock(bool on)
+{
+    if (on) {
+        PWR_CR3 |= PWR_CR3_USB33DEN;
+        if (!wait_set(&PWR_CR3, PWR_CR3_USB33RDY, HSE_TIMEOUT)) return false;
+        RCC_CR |= RCC_CR_HSI48ON;
+        if (!wait_set(&RCC_CR, RCC_CR_HSI48RDY, HSE_TIMEOUT)) return false;
+        RCC_D2CCIP2R |= RCC_D2CCIP2R_USBSEL;
+        RCC_APB1HENR |= CRS_BIT;
+        CRS_CFGR = (CRS_CFGR & ~(3U << CRS_CFGR_SYNCSRC_POS)) | (CRS_SYNC_USB << CRS_CFGR_SYNCSRC_POS);
+        CRS_CR |= CRS_CR_AUTOTRIMEN | CRS_CR_CEN;
+        return true;
+    }
+    RCC_APB1HRSTR |= CRS_BIT;
+    RCC_APB1HRSTR &= ~CRS_BIT;
+    RCC_APB1HENR &= ~CRS_BIT;
+    RCC_D2CCIP2R &= ~RCC_D2CCIP2R_USBSEL;
+    RCC_CR &= ~RCC_CR_HSI48ON;
+    PWR_CR3 &= ~PWR_CR3_USB33DEN;
+    return true;
+}
+#endif
 
 #endif

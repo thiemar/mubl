@@ -6,8 +6,10 @@
  * Each iteration powers the simulation up with random RAM (sometimes a well-formed handoff) and
  * random or partly valid flash, then sends a mix of random bytes and well-formed-but-random serial
  * commands, SRXL2 packets (valid CRC, random DFU operations) and DroneCAN transfers (valid framing
- * and transfer CRC, random payload) while time passes.  It fails if the simulation records misuse
- * (an unguarded ECC read, reprogramming, a write to the bootloader, sending while listening).
+ * and transfer CRC, random payload) while time passes; over USB the same serial traffic while the
+ * cable comes and goes and the host suspends.  It fails if the simulation records misuse (an
+ * unguarded ECC read, reprogramming, a write to the bootloader, sending while listening) or the
+ * USB peripheral model saw the driver break its rules.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -33,6 +35,13 @@ int sim_rx(uint32_t id, const uint8_t* data, uint8_t len, uint8_t fd, uint64_t n
 int sim_tx(uint32_t* id, uint8_t* data, uint8_t* fd);
 void sim_can_bus_bitrate(uint32_t rate);
 void sim_blocking_time(int on);
+void sim_usb_plug(int on);
+void sim_usb_suspend(int on);
+void sim_usb_attach_ms(uint32_t ms);
+void sim_usb_send(const uint8_t* d, int n);
+int sim_usb_recv(uint8_t* out, int max);
+int sim_usb_model_errors(void);
+uint32_t sim_usb_enumerations(void);
 uint32_t crc32_update(uint32_t crc, const uint8_t* p, uint32_t n);
 uint16_t crc16_xmodem(uint16_t crc, const uint8_t* p, uint32_t n);
 
@@ -103,6 +112,16 @@ static void can_transfer(void)
     }
 }
 
+/* port 2: USB */
+static void port_send(int port, const uint8_t* b, int n)
+{
+    if (port == 2) {
+        sim_usb_send(b, n);
+    } else {
+        sim_uart_send(port, b, n, 0);
+    }
+}
+
 static void serial_command(int port)
 {
     static const uint8_t ops[] = {0x21, 0x22, 0x23, 0x27, 0x29, 0x2A, 0x2B, 0x2C, 0x2E, 0x2F, 0x30, 0x33, 0x40};
@@ -122,7 +141,7 @@ static void serial_command(int port)
         n += 4;
     }
     b[n++] = below(20) ? 0x20 : (uint8_t)rnd();
-    sim_uart_send(port, b, (int)n, 0);
+    port_send(port, b, (int)n);
 }
 
 static void srxl2_packet(int port)
@@ -161,6 +180,7 @@ int main(int argc, char** argv)
     state = argc > 2 ? (uint32_t)strtoul(argv[2], NULL, 0) | 1U : 0x12345U;
     static uint8_t img[64 * 1024];
     uint8_t buf[8192];
+    uint32_t enumerations = 0;
     for (int it = 0; it < iterations; it++) {
         sim_reset_all();
         const uint32_t room = sim_app_size() < sizeof img ? sim_app_size() : (uint32_t)sizeof img;
@@ -188,12 +208,14 @@ int main(int argc, char** argv)
         sim_ram_set(sim_handoff_addr(), ram, sizeof ram);
         sim_can_bus_bitrate(below(2) ? 0 : 500000);
         sim_blocking_time((int)below(2));
+        sim_usb_attach_ms(below(1500));
+        sim_usb_plug(below(3) != 0);
         sim_power_on(1);
         if (below(20) == 0) sim_inject_powerloss(1 + below(200), rnd());
         for (int step = 0; step < 400 && sim_state() != 0; step++) {
             switch (below(10)) {
-            case 0: random_bytes(buf, 1 + below(64)); sim_uart_send((int)below(2), buf, 1 + (int)below(64), 0); break;
-            case 1: case 2: serial_command((int)below(2)); break;
+            case 0: random_bytes(buf, 1 + below(64)); port_send((int)below(3), buf, 1 + (int)below(64)); break;
+            case 1: case 2: serial_command((int)below(3)); break;
             case 3: case 4: srxl2_packet((int)below(2)); break;
             case 5: case 6: can_transfer(); break;
             case 7: {
@@ -202,12 +224,17 @@ int main(int argc, char** argv)
                 sim_rx(rnd() & 0x1FFFFFFFU, f, (uint8_t)(1 + below(8)), 0, 0);
                 break;
             }
+            case 8:
+                if (below(8) == 0) sim_usb_plug((int)below(2));
+                if (below(8) == 0) sim_usb_suspend((int)below(2));
+                break;
             default: sim_run(1 + below(50)); break;
             }
             sim_run(1);
             if (sim_state() == 2 && below(4) == 0) sim_app_reset();
             while (sim_uart_recv(0, buf, sizeof buf, 0) > 0) {}
             while (sim_uart_recv(1, buf, sizeof buf, 0) > 0) {}
+            while (sim_usb_recv(buf, sizeof buf) > 0) {}
             uint32_t id;
             uint8_t fd;
             while (sim_tx(&id, buf, &fd) > 0) {}
@@ -216,7 +243,12 @@ int main(int argc, char** argv)
             fprintf(stderr, "iteration %d: simulation errors 0x%x\n", it, sim_errors());
             return 1;
         }
+        enumerations += sim_usb_enumerations();
+        if (sim_usb_model_errors() != 0) {
+            fprintf(stderr, "iteration %d: USB peripheral model errors\n", it);
+            return 1;
+        }
     }
-    printf("%d iterations clean\n", iterations);
+    printf("%d iterations clean, %u USB enumerations\n", iterations, (unsigned)enumerations);
     return 0;
 }

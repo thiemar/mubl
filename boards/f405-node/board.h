@@ -1,7 +1,7 @@
 /*
  * STM32F405RG node: 1 MiB flash, 128 KiB RAM, 8 MHz crystal, 168 MHz.
- * DroneCAN on CAN1 PB8/PB9; serial protocol on USART1 (PA9/PA10); SRXL2 single-wire on USART3
- * (PB10).  The bootloader is sector 0 (16 KiB); the application starts at sector 1.
+ * DroneCAN on CAN1 PB8/PB9; serial protocol on USART1 (PA9/PA10) and USB (OTG_FS, PA11/PA12, VBUS
+ * not sensed); SRXL2 single-wire on USART3 (PB10).  The bootloader is sector 0 (16 KiB); the application starts at sector 1.
  */
 #define MUBL_FAMILY MUBL_FAMILY_F4
 #define MUBL_BOARD_NAME "org.sfwa.mubl.f405"
@@ -18,12 +18,18 @@
 #define MUBL_DRONECAN 1
 #define MUBL_SERIAL 1
 #define MUBL_SRXL2 1
-#define MUBL_LINK_PRIORITY MUBL_LINK_SERIAL, MUBL_LINK_DRONECAN, MUBL_LINK_SRXL2
+#ifndef MUBL_USB
+#define MUBL_USB 1
+#endif
+#define MUBL_LINK_PRIORITY MUBL_LINK_USB, MUBL_LINK_SERIAL, MUBL_LINK_DRONECAN, MUBL_LINK_SRXL2
 #define MUBL_COMPAT_AP_PERIPH 1
 #define MUBL_COMPAT_PX4_CAN 1
 
 #define MUBL_CAN_RX_PIN MUBL_PIN('B', 8, 9)
 #define MUBL_CAN_TX_PIN MUBL_PIN('B', 9, 9)
+
+#define MUBL_USB_DM_PIN MUBL_PIN('A', 11, 10)
+#define MUBL_USB_DP_PIN MUBL_PIN('A', 12, 10)
 
 #define MUBL_UART0_INSTANCE 1
 #define MUBL_UART0_TX_PIN MUBL_PIN('A', 9, 7)

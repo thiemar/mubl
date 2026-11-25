@@ -4,7 +4,7 @@
 
 #define STM32_CORTEX_M0 1
 #ifndef MUBL_F0_HSI48
-#define MUBL_F0_HSI48 0        /* 1: without HSE run from HSI48 (F04x, F07x, F09x) instead of HSI/2 */
+#define MUBL_F0_HSI48 MUBL_USB /* 1: without HSE run from HSI48 (F04x, F07x, F09x) instead of HSI/2 */
 #endif
 
 #define STM32_RCC 0x40021000U
@@ -17,6 +17,7 @@
 #define RCC_APB1ENR REG32(STM32_RCC + 0x1CU)
 #define RCC_AHBRSTR REG32(STM32_RCC + 0x28U)
 #define RCC_CFGR2 REG32(STM32_RCC + 0x2CU)
+#define RCC_CFGR3 REG32(STM32_RCC + 0x30U)
 #define RCC_CR2 REG32(STM32_RCC + 0x34U)
 
 #define RCC_CR_HSION (1U << 0)
@@ -34,6 +35,7 @@
 #define RCC_CFGR_PLLSRC_HSE_PREDIV (1U << 16)
 #define RCC_CFGR_PLLMUL_POS 18U
 #define RCC_APB2ENR_SYSCFGEN (1U << 0)
+#define RCC_CFGR3_USBSW (1U << 7)      /* USB clock: 0 HSI48, 1 PLL */
 
 #define STM32_FLASH 0x40022000U
 #define FLASH_ACR REG32(STM32_FLASH + 0x00U)
@@ -102,6 +104,21 @@
 #define USART4_RSTR RCC_APB1RSTR
 #define USART4_BIT (1U << 19)
 #define USART4_CLK stm32_pclk1
+
+/* USB (F04x, F07x, F09x): 1 KiB packet memory at 16-bit stride, internal D+ pull-up; HSI48
+ * trimmed by the CRS against the host's start-of-frame packets when there is no crystal. */
+#define STM32_USB 0x40005C00U
+#define STM32_USB_PMA 0x40006000U
+#define STM32_USB_PMA_STRIDE 1U
+#define STM32_USB_DPPU 1
+#define USB_CLOCK_ENR RCC_APB1ENR
+#define USB_RSTR RCC_APB1RSTR
+#define USB_CLOCK_BIT (1U << 23)
+#define STM32_CRS 0x40006C00U
+#define CRS_CR REG32(STM32_CRS + 0x00U)
+#define CRS_CR_CEN (1U << 5)
+#define CRS_CR_AUTOTRIMEN (1U << 6)
+#define CRS_BIT (1U << 27)
 
 extern uint32_t stm32_sysclk, stm32_pclk1, stm32_pclk2;
 

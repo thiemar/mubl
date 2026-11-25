@@ -23,14 +23,19 @@ BUILD = os.path.join(ROOT, 'build', 'sim')
 CC = os.environ.get('CC', 'cc')
 
 STATE_OFF, STATE_BOOTLOADER, STATE_APP = 0, 1, 2
-LINK_DRONECAN, LINK_SERIAL, LINK_SRXL2 = 1, 2, 3
+LINK_DRONECAN, LINK_SERIAL, LINK_SRXL2, LINK_USB = 1, 2, 3, 4
 APP_OK, APP_EMPTY, APP_BAD_VECTORS, APP_NO_DESCRIPTOR, APP_BAD_SIZE, APP_BAD_CRC, APP_BAD_BOARD, APP_FLASH_ERROR = range(8)
-STAY_NO, STAY_NO_APP, STAY_REQUESTED, STAY_HOLD_PIN, STAY_HOST, STAY_BOOT_LOOP = range(6)
+STAY_NO, STAY_NO_APP, STAY_REQUESTED, STAY_HOLD_PIN, STAY_HOST, STAY_BOOT_LOOP, STAY_USB = range(7)
 HANDOFF_TO_BL, HANDOFF_TO_APP = 0x4C42756D, 0x5041756D
 
 SOURCES = ['src/main.c', 'src/update.c', 'src/image.c', 'src/handoff.c', 'src/crc.c', 'src/util.c',
            'src/uart_mux.c', 'src/proto_dronecan.c', 'src/proto_serial.c', 'src/proto_srxl2.c',
-           'src/hal/host/hal_host.c']
+           'src/hal/host/hal_host.c', 'src/hal/usb/usb_cdc.c', 'src/hal/usb/usb_fs.c', 'src/hal/usb/usb_otg.c',
+           'src/hal/host/usb_fs_model.c', 'src/hal/host/usb_otg_model.c', 'src/hal/host/usb_host.c']
+HEADERS = ['src/mubl.h', 'src/mubl_config.h', 'src/mubl_defs.h', 'boards/sim/board.h', 'src/hal/hal.h',
+           'src/links.h', 'src/hal/usb/usb_cdc.h', 'src/hal/usb/usb_fs_regs.h', 'src/hal/usb/usb_otg_regs.h',
+           'src/hal/host/usb_model.h', 'src/hal/host/usb_fs_model.h', 'src/hal/host/usb_otg_model.h',
+           'src/hal/host/usb_host.h']
 
 
 def build(geometry=1, defines=None, frame='classic'):
@@ -38,8 +43,7 @@ def build(geometry=1, defines=None, frame='classic'):
     flags = ['-DSIM_GEOMETRY=%d' % geometry] + ['-D%s=%s' % kv for kv in sorted(defines.items())]
     sources = SOURCES + ['src/dronecan/%s/dronecan.c' % frame]
     digest = hashlib.sha1(' '.join(flags + [frame]).encode()).hexdigest()[:10]
-    stamp = max(os.path.getmtime(os.path.join(ROOT, p)) for p in sources + ['src/mubl.h', 'src/mubl_config.h',
-                                                                         'boards/sim/board.h', 'src/hal/hal.h'])
+    stamp = max(os.path.getmtime(os.path.join(ROOT, p)) for p in sources + HEADERS)
     out = os.path.join(BUILD, 'libmubl_%s.so' % digest)
     if not os.path.exists(out) or os.path.getmtime(out) < stamp:
         os.makedirs(BUILD, exist_ok=True)
@@ -59,7 +63,7 @@ def build_exe(main, geometry=1, defines=None, extra=()):
     sources = SOURCES + ['src/dronecan/classic/dronecan.c', main] + list(extra)
     digest = hashlib.sha1(' '.join(lib_flags + sources).encode()).hexdigest()[:10]
     out = os.path.join(BUILD, os.path.splitext(os.path.basename(main))[0] + '_' + digest)
-    stamp = max(os.path.getmtime(os.path.join(ROOT, p)) for p in sources)
+    stamp = max(os.path.getmtime(os.path.join(ROOT, p)) for p in sources + HEADERS)
     if not os.path.exists(out) or os.path.getmtime(out) < stamp:
         os.makedirs(BUILD, exist_ok=True)
         subprocess.check_call([CC, '-std=c11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
@@ -104,6 +108,16 @@ class Sim:
                 'sim_uart_send': ([ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_uint32], None),
                 'sim_uart_recv': ([ctypes.c_int, u8p, ctypes.c_int, ctypes.c_uint32], ctypes.c_int),
                 'sim_uart_baud': ([ctypes.c_int], ctypes.c_uint32),
+            })
+        if hasattr(lib, 'sim_usb_plug'):
+            sig.update({
+                'sim_usb_plug': ([ctypes.c_int], None), 'sim_usb_suspend': ([ctypes.c_int], None),
+                'sim_usb_attach_ms': ([ctypes.c_uint32], None), 'sim_usb_state': ([], ctypes.c_int),
+                'sim_usb_connected': ([], ctypes.c_int), 'sim_usb_enumerations': ([], ctypes.c_uint32),
+                'sim_usb_failures': ([], ctypes.c_uint32), 'sim_usb_detaches': ([], ctypes.c_uint32),
+                'sim_usb_model_errors': ([], ctypes.c_int), 'sim_usb_descriptor': ([ctypes.c_int, u8p], None),
+                'sim_usb_send': ([ctypes.c_char_p, ctypes.c_int], None),
+                'sim_usb_recv': ([u8p, ctypes.c_int], ctypes.c_int), 'sim_usb_pending': ([], ctypes.c_int),
             })
         if hasattr(lib, 'sim_can_bus_bitrate'):
             sig.update({
@@ -155,6 +169,19 @@ class Sim:
         buf = (ctypes.c_uint8 * 8192)()
         n = self.lib.sim_uart_recv(port, buf, 8192, baud)
         return bytes(buf[:n])
+
+    def usb_send(self, data):
+        self.lib.sim_usb_send(bytes(data), len(data))
+
+    def usb_recv(self):
+        buf = (ctypes.c_uint8 * 65536)()
+        n = self.lib.sim_usb_recv(buf, 65536)
+        return bytes(buf[:n])
+
+    def usb_descriptor(self, which):
+        buf = (ctypes.c_uint8 * 256)()
+        self.lib.sim_usb_descriptor(which, buf)
+        return bytes(buf)
 
     def boot(self, keep_ram=False):
         self.lib.sim_power_on(1 if keep_ram else 0)

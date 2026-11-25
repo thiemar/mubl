@@ -95,6 +95,27 @@
 #define USART5_BIT (1U << 20)
 #define USART5_CLK stm32_pclk1
 
+/* USB (F302/F303): no internal D+ pull-up (MUBL_USB_PULLUP_PIN, or D+ is driven low to detach).
+ * F302/F303xB/C: 512 B packet memory at 32-bit stride, shared with CAN, so not both at once;
+ * xD/xE (MUBL_F3_USB_PMA_16BIT): 768 B at 16-bit stride beside CAN. */
+#define STM32_USB 0x40005C00U
+#define STM32_USB_PMA 0x40006000U
+#ifdef MUBL_F3_USB_PMA_16BIT
+#define STM32_USB_PMA_STRIDE 1U
+#else
+#define STM32_USB_PMA_STRIDE 2U
+#if MUBL_USB && MUBL_DRONECAN
+#error "F302/F303xB/C: USB and CAN share their packet memory and cannot both run (set MUBL_F3_USB_PMA_16BIT on xD/xE)"
+#endif
+#endif
+#define STM32_USB_DPPU 0
+#define USB_CLOCK_ENR RCC_APB1ENR
+#define USB_RSTR RCC_APB1RSTR
+#define USB_CLOCK_BIT (1U << 23)
+#if MUBL_USB && !defined(MUBL_USB_DP_PIN)
+#error "F3 USB needs MUBL_USB_DM_PIN and MUBL_USB_DP_PIN (PA11, PA12, alternate function 14)"
+#endif
+
 extern uint32_t stm32_sysclk, stm32_pclk1, stm32_pclk2;
 
 #endif

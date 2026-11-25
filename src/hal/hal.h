@@ -62,4 +62,17 @@ void hal_uart_write(uint8_t port, const uint8_t* data, uint16_t n);  /* returns 
 void hal_uart_stop(uint8_t port);
 #endif
 
+/* ---- USB CDC-ACM device (src/hal/usb) ------------------------------------------------------ */
+
+#if MUBL_USB
+#define HAL_USB_RESET 1U          /* hal_usb_poll events: the host reset the bus */
+#define HAL_USB_SOF 2U            /* a start-of-frame since the last poll: a host is driving the bus */
+#define HAL_USB_CONFIGURED 4U     /* the host has selected the configuration */
+void hal_usb_start(void);                  /* peripheral on, attach to the bus (D+ pull-up) */
+uint8_t hal_usb_poll(void);                /* enumeration, requests, data; returns HAL_USB_* */
+int hal_usb_getc(void);                    /* a received byte, or -1 (the host is held off meanwhile) */
+bool hal_usb_write(const uint8_t* data, uint16_t n);   /* queue all or nothing; false if not possible */
+void hal_usb_stop(void);                   /* send what is queued (briefly), detach, peripheral off */
+#endif
+
 #endif /* MUBL_HAL_H */

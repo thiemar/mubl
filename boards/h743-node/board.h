@@ -1,7 +1,7 @@
 /*
  * STM32H743ZI (e.g. a NUCLEO-H743ZI): 2 MiB flash, LDO supply, 8 MHz HSE bypass (ST-LINK MCO).
  * DroneCAN on FDCAN1 PD0/PD1; serial protocol on USART3 PD8/PD9 (the Nucleo's virtual COM port);
- * SRXL2 single-wire on USART2 PD5.  The bootloader is sector 0 (128 KiB).
+ * SRXL2 single-wire on USART2 PD5; USB on the Nucleo's user connector (OTG_FS, PA11/PA12).  The bootloader is sector 0 (128 KiB).
  */
 #define MUBL_FAMILY MUBL_FAMILY_H7
 #define MUBL_BOARD_NAME "org.sfwa.mubl.h743"
@@ -20,7 +20,13 @@
 #define MUBL_DRONECAN 1
 #define MUBL_SERIAL 1
 #define MUBL_SRXL2 1
-#define MUBL_LINK_PRIORITY MUBL_LINK_DRONECAN, MUBL_LINK_SERIAL, MUBL_LINK_SRXL2
+#ifndef MUBL_USB
+#define MUBL_USB 1
+#endif
+#define MUBL_LINK_PRIORITY MUBL_LINK_USB, MUBL_LINK_DRONECAN, MUBL_LINK_SERIAL, MUBL_LINK_SRXL2
+#define MUBL_USB_OTG_INSTANCE 2                  /* USB2 OTG_FS */
+#define MUBL_USB_DM_PIN MUBL_PIN('A', 11, 10)
+#define MUBL_USB_DP_PIN MUBL_PIN('A', 12, 10)
 
 #define MUBL_CAN_RX_PIN MUBL_PIN('D', 0, 9)
 #define MUBL_CAN_TX_PIN MUBL_PIN('D', 1, 9)

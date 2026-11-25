@@ -14,24 +14,32 @@
 #define RCC_CR REG32(STM32_RCC + 0x000U)
 #define RCC_CFGR REG32(STM32_RCC + 0x010U)
 #define RCC_D2CCIP1R REG32(STM32_RCC + 0x050U)
+#define RCC_D2CCIP2R REG32(STM32_RCC + 0x054U)
+#define RCC_AHB1RSTR REG32(STM32_RCC + 0x080U)
 #define RCC_AHB4RSTR REG32(STM32_RCC + 0x088U)
 #define RCC_APB1LRSTR REG32(STM32_RCC + 0x090U)
 #define RCC_APB1HRSTR REG32(STM32_RCC + 0x094U)
 #define RCC_APB2RSTR REG32(STM32_RCC + 0x098U)
+#define RCC_AHB1ENR REG32(STM32_RCC + 0x0D8U)
 #define RCC_AHB4ENR REG32(STM32_RCC + 0x0E0U)
 #define RCC_APB1LENR REG32(STM32_RCC + 0x0E8U)
 #define RCC_APB1HENR REG32(STM32_RCC + 0x0ECU)
 #define RCC_APB2ENR REG32(STM32_RCC + 0x0F0U)
 
+#define RCC_CR_HSI48ON (1U << 12)
+#define RCC_CR_HSI48RDY (1U << 13)
 #define RCC_CR_HSEON (1U << 16)
 #define RCC_CR_HSERDY (1U << 17)
 #define RCC_CR_HSEBYP (1U << 18)
 #define RCC_D2CCIP1R_FDCANSEL_POS 28U
+#define RCC_D2CCIP2R_USBSEL (3U << 20)          /* 3: HSI48 */
 
 #define STM32_PWR 0x58024800U
 #define PWR_CSR1 REG32(STM32_PWR + 0x004U)
 #define PWR_CR3 REG32(STM32_PWR + 0x00CU)
 #define PWR_CSR1_ACTVOSRDY (1U << 13)
+#define PWR_CR3_USB33DEN (1U << 24)
+#define PWR_CR3_USB33RDY (1U << 26)
 
 #define STM32_FLASH 0x52002000U
 #define FLASH_ACR REG32(STM32_FLASH + 0x000U)
@@ -124,6 +132,33 @@
 #define USART8_RSTR RCC_APB1LRSTR
 #define USART8_BIT (1U << 31)
 #define USART8_CLK stm32_pclk1
+
+/* USB: an OTG core with its embedded full-speed PHY, chosen by MUBL_USB_OTG_INSTANCE: 1 OTG_HS
+ * (USB1: H74x/H75x PB14/PB15, H72x/H73x PA11/PA12), 2 OTG_FS (USB2, H74x/H75x PA11/PA12).  48 MHz
+ * from HSI48, trimmed by the CRS against that core's start-of-frame packets; VDD33USB must be
+ * supplied.  VBUS sensing off (B-session override). */
+#ifndef MUBL_USB_OTG_INSTANCE
+#define MUBL_USB_OTG_INSTANCE 1
+#endif
+#if MUBL_USB_OTG_INSTANCE == 1
+#define STM32_OTG 0x40040000U
+#define OTG_CLOCK_BIT (1U << 25)
+#define CRS_SYNC_USB 2U
+#else
+#define STM32_OTG 0x40080000U
+#define OTG_CLOCK_BIT (1U << 27)
+#define CRS_SYNC_USB 3U
+#endif
+#define OTG_CLOCK_ENR RCC_AHB1ENR
+#define OTG_RSTR RCC_AHB1RSTR
+#define STM32_OTG_VBDEN 1
+#define STM32_CRS 0x40008400U
+#define CRS_CR REG32(STM32_CRS + 0x00U)
+#define CRS_CFGR REG32(STM32_CRS + 0x04U)
+#define CRS_CR_CEN (1U << 5)
+#define CRS_CR_AUTOTRIMEN (1U << 6)
+#define CRS_CFGR_SYNCSRC_POS 28U
+#define CRS_BIT (1U << 1)                    /* APB1HENR, APB1HRSTR */
 
 extern uint32_t stm32_sysclk, stm32_pclk1, stm32_pclk2;
 

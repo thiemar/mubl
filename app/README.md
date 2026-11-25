@@ -101,4 +101,10 @@ updated.  Existing AP_Periph and PX4 applications need no changes on boards with
   per power-on.  The application must configure the same supply (Cube's `HAL_PWREx_ConfigSupply`
   returns an error for a different one).
 - **Clocks.**  The bootloader returns to HSI with the PLL and HSE off (H7: HSE off; the CPU never left
-  HSI), so the application's clock set-up starts from the reset configuration.
+  HSI), so the application's clock set-up starts from the reset configuration.  With USB, HSI48,
+  the CRS and the USB clock selection are back at their reset values too (H7: `PWR_CR3.USB33DEN`
+  cleared).
+- **USB.**  The bootloader detaches from USB (`MUBL_USB_DETACH_MS`) and resets the peripheral before
+  the application starts: the application initialises its own USB and the host enumerates it as a
+  new device.  `mubl_info_t.link` is `MUBL_LINK_USB` when the update came over USB; to ask for the
+  bootloader over USB, `mubl_app_request(MUBL_LINK_USB, 0, 0, 0, NULL, 0, 0)` and reset.

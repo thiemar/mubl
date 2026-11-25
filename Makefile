@@ -29,6 +29,7 @@ SRCS := src/main.c src/update.c src/image.c src/handoff.c src/crc.c src/util.c s
 	src/proto_dronecan.c src/proto_serial.c src/proto_srxl2.c \
 	src/hal/stm32/system.c src/hal/stm32/clock.c src/hal/stm32/gpio.c src/hal/stm32/flash.c \
 	src/hal/stm32/bxcan.c src/hal/stm32/fdcan.c src/hal/stm32/uart.c src/hal/stm32/divide.c src/hal/stm32/crc_hw.c \
+	src/hal/usb/usb_cdc.c src/hal/usb/usb_fs.c src/hal/usb/usb_otg.c \
 	src/dronecan/$(FRAME)/dronecan.c
 OBJS := $(patsubst %.c,$(BUILD)/%.o,$(SRCS))
 
@@ -41,7 +42,7 @@ $(BUILD)/mubl.ld: ld/mubl.ld.S boards/$(BOARD)/board.h src/mubl_config.h src/mub
 	@mkdir -p $(@D)
 	@$(CC) -E -P -x c -Iboards/$(BOARD) -Isrc $(EXTRA_CFLAGS) $< -o $@
 
-$(BUILD)/%.o: %.c boards/$(BOARD)/board.h $(wildcard src/*.h src/hal/*.h src/hal/stm32/*.h)
+$(BUILD)/%.o: %.c boards/$(BOARD)/board.h $(wildcard src/*.h src/hal/*.h src/hal/stm32/*.h src/hal/usb/*.h)
 	@mkdir -p $(@D)
 	@echo "CC $<"
 	@$(CC) $(CFLAGS) -c $< -o $@

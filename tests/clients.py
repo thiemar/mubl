@@ -17,16 +17,22 @@ class SerialClient:
     def __init__(self, sim, port=0, baud=115200):
         self.sim, self.port, self.baud = sim, port, baud
 
-    def command(self, data, reply=0, timeout_ms=3000):
+    def send(self, data):
         self.sim.uart_send(self.port, bytes(data), self.baud)
+
+    def recv(self):
+        return self.sim.uart_recv(self.port, self.baud)
+
+    def command(self, data, reply=0, timeout_ms=3000):
+        self.send(data)
         out = b''
         for _ in range(timeout_ms):
             if self.sim.run(1) != 1:
                 break
-            out += self.sim.uart_recv(self.port, self.baud)
+            out += self.recv()
             if len(out) >= reply + 2:
                 break
-        out += self.sim.uart_recv(self.port, self.baud)
+        out += self.recv()
         if len(out) < reply + 2:
             raise NoReply('%r -> %r' % (bytes(data[:4]), out))
         if out[reply] != INSYNC:
@@ -34,7 +40,7 @@ class SerialClient:
         return out[:reply], out[reply + 1]
 
     def sync(self):
-        self.sim.uart_recv(self.port, self.baud)        # like uploader.py: drop what came before
+        self.recv()                                     # like uploader.py: drop what came before
         return self.command([GET_SYNC, EOC])[1]
 
     def device(self, arg):
@@ -67,6 +73,19 @@ class SerialClient:
             chunk += b'\xff' * (-len(chunk) % 4)
             assert self.program(chunk) == OK, off
         return info if not boot else (info, self.boot())
+
+
+class UsbSerialClient(SerialClient):
+    """The same protocol over the simulated USB host's CDC-ACM port."""
+
+    def __init__(self, sim):
+        super().__init__(sim)
+
+    def send(self, data):
+        self.sim.usb_send(bytes(data))
+
+    def recv(self):
+        return self.sim.usb_recv()
 
 
 class SimSrxl2Transport:
