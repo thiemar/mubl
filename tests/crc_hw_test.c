@@ -1,48 +1,12 @@
 /*
- * src/hal/stm32/crc_hw.c against a software model of the STM32 CRC unit (F0/F3/H7, as RM0091,
- * RM0316 and RM0433 describe it): polynomial 0x04C11DB7 computed MSB first; REV_IN = 01 reverses
- * the bits of each byte of what is written, in place; REV_OUT reverses the 32-bit result; RESET
- * loads INIT.  The driver must give the same answers as the reflected software CRC-32.
+ * src/hal/stm32/crc_hw.c against the model of the STM32 CRC unit (src/hal/host/crc_model.c).  The
+ * driver must give the same answers as the reflected software CRC-32.
  */
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "crc.h"
-
-static uint32_t reg, cr;
-
-static uint32_t rev32(uint32_t x)
-{
-    uint32_t r = 0;
-    for (int i = 0; i < 32; i++) r |= ((x >> i) & 1U) << (31 - i);
-    return r;
-}
-
-static uint32_t rev_bytes(uint32_t w)        /* REV_IN = 01: each byte's bits, in place */
-{
-    uint32_t r = 0;
-    for (int b = 0; b < 4; b++) r |= (rev32((w >> (8 * b)) & 0xFFU) >> 24) << (8 * b);
-    return r;
-}
-
-static void feed(uint32_t data, int bits)
-{
-    reg ^= bits == 32 ? data : data << (32 - bits);
-    for (int i = 0; i < bits; i++) reg = (reg & 0x80000000U) ? (reg << 1) ^ 0x04C11DB7U : reg << 1;
-}
-
-void model_start(uint32_t init, uint32_t c)
-{
-    if ((c & 0x60U) != 0x20U || !(c & 0x80U)) {
-        printf("unexpected CR %08x\n", c);
-        exit(1);
-    }
-    cr = c;
-    reg = init;                                /* RESET: DR = INIT */
-}
-void model_put8(uint8_t b) { feed(rev_bytes(b), 8); }
-void model_put32(uint32_t w) { feed(rev_bytes(w), 32); }
-uint32_t model_get(void) { return (cr & 0x80U) ? rev32(reg) : reg; }
+#include "hal/host/crc_model.h"
 
 static uint32_t reference(uint32_t crc, const uint8_t* p, uint32_t n)   /* crc32_small */
 {
@@ -58,6 +22,7 @@ int main(void)
     static uint8_t buf[512];
     uint32_t x = 99;
     int bad = 0;
+    crc_model_clock(true);
     if ((~crc32_update(~0U, (const uint8_t*)"123456789", 9)) != 0xCBF43926U) {
         printf("zlib check value wrong\n");
         bad++;
@@ -71,6 +36,10 @@ int main(void)
             printf("offset %u length %u init %08x: %08x, expected %08x\n", off, len, init, got, want);
             bad++;
         }
+    }
+    if (crc_model_errors != 0U) {
+        printf("CRC unit misused %u times\n", crc_model_errors);
+        bad++;
     }
     printf(bad ? "FAILED\n" : "ok\n");
     return bad != 0;

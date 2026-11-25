@@ -115,8 +115,9 @@ static void start_app(void)
         return;
     }
     for (uint8_t i = 0; i < sizeof priority; i++) link_stop(priority[i]);
-    hal_deinit();
+    /* Before hal_deinit: the block's CRC may come from the CRC unit, which that stops. */
     handoff_write(&m.session, (uint8_t)(m.req.boot_attempts + 1U));
+    hal_deinit();
     hal_start_app();
 }
 

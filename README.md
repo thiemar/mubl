@@ -6,11 +6,13 @@ supported as shipped; other parts are added with a board file and, where the per
 family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
 
-Status: everything above the register level is tested on a host simulation (212 tests, including
+Status: everything above the register level is tested on a host simulation (242 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
 Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
 operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
-checked against ST's CMSIS headers, but **it has not yet run on hardware**.
+checked against ST's CMSIS headers.  **On hardware, only USB on the STM32H735G-DK (`h735g-dk`) has
+run so far** (see [Hardware tests](#hardware-tests)); DroneCAN, the UART links and the other parts
+have not.
 
 ## Contents
 
@@ -295,7 +297,7 @@ the PATH (`CROSS=` to choose).  Builds use LTO, `-Os`, no C library, and `-Werro
 
 ## Bring-up on a new board
 
-The STM32 code has not run on hardware yet, so check these in order the first time:
+Only `h735g-dk` (USB) has run on hardware so far, so on other boards check these in order the first time:
 
 1. Flash the bootloader alone: `st-flash write build/<board>/mubl.bin 0x08000000` (or
    `STM32_Programmer_CLI -c port=SWD -w build/<board>/mubl.bin 0x08000000`).  With no application it
@@ -352,7 +354,7 @@ USB host that enumerates the device) as a shared library and runs:
 
 | File | Covers | Needs |
 | --- | --- | --- |
-| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation, `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit | |
+| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation, `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
 | `test_dronecan.py` | allocation, GetNodeInfo, autobaud, `FirmwareUpdater` end to end, AP_Periph and PX4 handoffs, RestartNode, rejected images, a file server lost mid-update, busy with another link | sfwa-dronecan checkout at `../dronecan` (`SFWA_DRONECAN=`) |
 | `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
 | `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud | a pty for the command-line test |
@@ -366,9 +368,29 @@ USB host that enumerates the device) as a shared library and runs:
 transmission, flash erase and program), as on hardware; some tests always do, and so does the fuzzer
 half the time.
 
+### Hardware tests
+
+`tests/hw/h735g-dk-app` is a test application for the STM32H735G-DK (`make` there gives `.apj`
+files for versions 1 and 2 with `APP_VERSION=`).  It reports on the ST-LINK's virtual COM port what
+the bootloader handed over, ticks every second, and on a key resets (`r`) or asks the bootloader to
+stay (`b`).  Run on a kit on 2026-11-25, with the bootloader flashed over SWD:
+
+- the USB FS port enumerates (0483:5740, serial number = unique ID) and `uploader.py --identify`
+  reports protocol 5, board 7352 and 896 KiB;
+- `uploader.py` erases, programs and verifies the application, and it starts with the handoff
+  saying USB; a second version replaces the first;
+- with the host attached the bootloader stays after a reset (stay reason USB) until BOOT; the
+  application's stay request is read (stay reason requested); LED1 is on in the bootloader;
+- with the USB cable out, a reset starts the application after the boot delay (handoff: no link).
+
+Not covered there: the user button, and power loss during an update.  The run found the handoff to the application being
+written after `hal_deinit` had stopped the CRC unit (every F3 and H7 board); the simulation now
+models that unit's clock (`BootH7CrcUnit`, `UpdateH7CrcUnit`, `AppHeaderCrcUnit`).
+
 ## Limitations
 
-- Not yet run on hardware; first bring-up should watch clocks, CAN bit timing and the H7 supply.
+- On hardware so far only USB on the STM32H735G-DK; first bring-up elsewhere should watch clocks,
+  CAN bit timing and the H7 supply.
 - One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
 - USB: no VBUS sensing (a suspended host counts as gone); full speed only; the device always
   re-enumerates for the application (no live handoff of the USB connection).  The USB models are

@@ -35,13 +35,17 @@ SOURCES = ['src/main.c', 'src/update.c', 'src/image.c', 'src/handoff.c', 'src/cr
 HEADERS = ['src/mubl.h', 'src/mubl_config.h', 'src/mubl_defs.h', 'boards/sim/board.h', 'src/hal/hal.h',
            'src/links.h', 'src/hal/usb/usb_cdc.h', 'src/hal/usb/usb_fs_regs.h', 'src/hal/usb/usb_otg_regs.h',
            'src/hal/host/usb_model.h', 'src/hal/host/usb_fs_model.h', 'src/hal/host/usb_otg_model.h',
-           'src/hal/host/usb_host.h']
+           'src/hal/host/usb_host.h', 'src/hal/host/crc_model.h']
 
 
 def build(geometry=1, defines=None, frame='classic'):
     defines = dict(defines or {})
     flags = ['-DSIM_GEOMETRY=%d' % geometry] + ['-D%s=%s' % kv for kv in sorted(defines.items())]
     sources = SOURCES + ['src/dronecan/%s/dronecan.c' % frame]
+    if defines.get('MUBL_HW_CRC32'):
+        # The CRC unit's driver against a model of the unit, whose clock follows hal_init/hal_deinit
+        sources += ['src/hal/stm32/crc_hw.c', 'src/hal/host/crc_model.c']
+        flags.append('-DMUBL_CRC_MODEL')
     digest = hashlib.sha1(' '.join(flags + [frame]).encode()).hexdigest()[:10]
     stamp = max(os.path.getmtime(os.path.join(ROOT, p)) for p in sources + HEADERS)
     out = os.path.join(BUILD, 'libmubl_%s.so' % digest)

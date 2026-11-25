@@ -22,9 +22,10 @@ class Crc(unittest.TestCase):
 
 class Boot(unittest.TestCase):
     geometry = 1
+    defines = None
 
     def setUp(self):
-        self.sim = Sim(self.geometry).fresh()
+        self.sim = Sim(self.geometry, self.defines).fresh()
 
     def boot_with(self, image):
         self.sim.load(image)
@@ -219,11 +220,18 @@ class BootH7(Boot):
         self.assertEqual(self.sim.errors(), 0)
 
 
+class BootH7CrcUnit(BootH7):
+    """As on the hardware: CRC-32 in the CRC unit, whose clock hal_deinit stops (the handoff to the
+    application must be written before that)."""
+    defines = {'MUBL_HW_CRC32': 1}
+
+
 class Update(unittest.TestCase):
     geometry = 1
+    defines = None
 
     def setUp(self):
-        self.sim = Sim(self.geometry).fresh()
+        self.sim = Sim(self.geometry, self.defines).fresh()
 
     def test_serial_update_boots(self):
         img = make_image(self.sim, size=50001)
@@ -335,12 +343,17 @@ class UpdateH7(Update):
     geometry = 2
 
 
+class UpdateH7CrcUnit(UpdateH7):
+    defines = {'MUBL_HW_CRC32': 1}
+
+
 if __name__ == '__main__':
     unittest.main()
 
 
 class AppHeader(unittest.TestCase):
     """app/mubl_app.h, as an application uses it, against the simulated bootloader."""
+    defines = None
 
     def setUp(self):
         import ctypes
@@ -365,7 +378,7 @@ class AppHeader(unittest.TestCase):
                                          ctypes.c_char_p, ctypes.c_uint32, ctypes.c_uint8]
         self.api.app_load.argtypes = [ctypes.c_char_p]
         self.api.app_info.argtypes = [ctypes.POINTER(Info)]
-        self.sim = Sim(1).fresh()
+        self.sim = Sim(1, self.defines).fresh()
 
     def block(self):
         return bytes(self.api.app_block().contents)
@@ -385,6 +398,7 @@ class AppHeader(unittest.TestCase):
         info = self.Info()
         self.assertEqual(self.api.app_info(ctypes.byref(info)), 1)
         self.assertEqual((info.link, info.boot_attempts, info.uart_baud), (2, 1, 230400))
+        self.assertEqual(self.sim.errors(), 0)
         self.api.app_confirm()
         self.assertEqual(self.api.app_info(ctypes.byref(info)), 0)
 
@@ -394,6 +408,10 @@ class AppHeader(unittest.TestCase):
         self.sim.boot(keep_ram=True)
         self.assertEqual(self.sim.can_bitrate(), 500000)
         self.assertEqual(self.sim.node_id(), 42)
+
+
+class AppHeaderCrcUnit(AppHeader):
+    defines = {'MUBL_HW_CRC32': 1}
 
 
 class Divide(unittest.TestCase):
@@ -422,6 +440,7 @@ class HardwareCrc(unittest.TestCase):
                                '-DMUBL_HW_CRC32=1', '-I' + os.path.join(ROOT, 'boards/sim'),
                                '-I' + os.path.join(ROOT, 'src'), '-I' + os.path.join(ROOT, 'src/dronecan/classic'),
                                os.path.join(ROOT, 'tests', 'crc_hw_test.c'),
-                               os.path.join(ROOT, 'src', 'hal', 'stm32', 'crc_hw.c'), '-o', out])
+                               os.path.join(ROOT, 'src', 'hal', 'stm32', 'crc_hw.c'),
+                               os.path.join(ROOT, 'src', 'hal', 'host', 'crc_model.c'), '-o', out])
         r = subprocess.run([out], capture_output=True, text=True)
         self.assertEqual((r.returncode, r.stdout.strip()), (0, 'ok'), r.stdout)

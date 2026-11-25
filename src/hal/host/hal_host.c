@@ -26,6 +26,9 @@
 #include "hal/host/usb_model.h"
 #include "hal/host/usb_host.h"
 #endif
+#if MUBL_HW_CRC32
+#include "hal/host/crc_model.h"           /* the CRC unit, with its clock */
+#endif
 
 #define G MUBL_FLASH_GRANULE
 #define FLASH_SIZE SIM_FLASH_SIZE
@@ -38,6 +41,7 @@ enum {
     ERR_PROTECTED = 4,           /* erased or programmed the bootloader */
     ERR_LISTEN_SEND = 8,         /* sent a CAN frame in listen-only mode */
     ERR_ALIGN = 16,              /* misaligned program */
+    ERR_CRC_UNIT = 32,           /* used the CRC unit with its clock off, or set it up wrong */
 };
 
 static uint8_t flash[FLASH_SIZE];
@@ -113,6 +117,9 @@ void hal_init(void)
 {
     sim.can_on = 0;
     sim.uart[0].on = sim.uart[1].on = 0;
+#if MUBL_HW_CRC32
+    crc_model_clock(true);
+#endif
 }
 
 uint32_t hal_millis(void) { return sim.now; }
@@ -140,6 +147,9 @@ void hal_deinit(void)
 {
     sim.can_on = 0;
     sim.uart[0].on = sim.uart[1].on = 0;
+#if MUBL_HW_CRC32
+    crc_model_clock(false);              /* as the STM32 HAL stops the CRC unit's clock */
+#endif
 }
 
 void hal_start_app(void)
@@ -393,6 +403,9 @@ static void boot(void)
 #if MUBL_USB
     hw_stop();                           /* a reset leaves the peripheral in reset, detached */
 #endif
+#if MUBL_HW_CRC32
+    crc_model_clock(false);
+#endif
     guarded_run(1);
 }
 
@@ -438,6 +451,10 @@ void sim_reset_all(void)
 #if MUBL_USB
     usbm_reset_all();
     usb_host_reset(device_step);
+#endif
+#if MUBL_HW_CRC32
+    crc_model_errors = 0;
+    crc_model_clock(false);
 #endif
 }
 
@@ -511,7 +528,13 @@ void sim_set_time(uint32_t ms) { sim.now = ms; }
 uint32_t sim_boots(void) { return sim.boots; }
 uint32_t sim_app_entry(void) { return sim.app_entry; }
 uint32_t sim_app_sp(void) { return sim.app_sp; }
-int sim_errors(void) { return sim.errors; }
+int sim_errors(void)
+{
+#if MUBL_HW_CRC32
+    if (crc_model_errors != 0U) sim.errors |= ERR_CRC_UNIT;
+#endif
+    return sim.errors;
+}
 int sim_led(void) { return sim.led; }
 int sim_app_status(void) { return mubl_app()->status; }
 int sim_app_format(void) { return mubl_app()->format; }
