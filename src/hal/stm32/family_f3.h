@@ -1,0 +1,121 @@
+/* STM32F3 (RM0316).  Clock: 72 MHz from HSE via the PLL (APB1 36 MHz), else 64 MHz from HSI/2. */
+#ifndef MUBL_FAMILY_F3_H
+#define MUBL_FAMILY_F3_H
+
+#define STM32_RCC 0x40021000U
+#define RCC_CR REG32(STM32_RCC + 0x00U)
+#define RCC_CFGR REG32(STM32_RCC + 0x04U)
+#define RCC_APB2RSTR REG32(STM32_RCC + 0x0CU)
+#define RCC_APB1RSTR REG32(STM32_RCC + 0x10U)
+#define RCC_AHBENR REG32(STM32_RCC + 0x14U)
+#define RCC_APB2ENR REG32(STM32_RCC + 0x18U)
+#define RCC_APB1ENR REG32(STM32_RCC + 0x1CU)
+#define RCC_AHBRSTR REG32(STM32_RCC + 0x28U)
+#define RCC_CFGR2 REG32(STM32_RCC + 0x2CU)
+
+#define RCC_CR_HSION (1U << 0)
+#define RCC_CR_HSIRDY (1U << 1)
+#define RCC_CR_HSEON (1U << 16)
+#define RCC_CR_HSERDY (1U << 17)
+#define RCC_CR_HSEBYP (1U << 18)
+#define RCC_CR_PLLON (1U << 24)
+#define RCC_CR_PLLRDY (1U << 25)
+#define RCC_CFGR_SW_PLL 2U
+#define RCC_CFGR_SWS_POS 2U
+#define RCC_CFGR_PPRE1_POS 8U
+#define RCC_CFGR_PPRE2_POS 11U
+#define RCC_CFGR_PLLSRC_HSE_PREDIV (1U << 16)
+#define RCC_CFGR_PLLMUL_POS 18U
+
+#define STM32_FLASH 0x40022000U
+#define FLASH_ACR REG32(STM32_FLASH + 0x00U)
+#define FLASH_KEYR REG32(STM32_FLASH + 0x04U)
+#define FLASH_SR REG32(STM32_FLASH + 0x0CU)
+#define FLASH_CR REG32(STM32_FLASH + 0x10U)
+#define FLASH_AR REG32(STM32_FLASH + 0x14U)
+#define FLASH_ACR_PRFTBE (1U << 4)
+#define FLASH_SR_BSY (1U << 0)
+#define FLASH_SR_PGERR (1U << 2)
+#define FLASH_SR_WRPRTERR (1U << 4)
+#define FLASH_SR_EOP (1U << 5)
+#define FLASH_CR_PG (1U << 0)
+#define FLASH_CR_PER (1U << 1)
+#define FLASH_CR_STRT (1U << 6)
+#define FLASH_CR_LOCK (1U << 7)
+#ifndef MUBL_FLASH_PAGE
+#define MUBL_FLASH_PAGE 2048U
+#endif
+
+#define STM32_CRC 0x40023000U
+#define CRC_CLOCK_BIT (1U << 6)
+#define CRC_CLOCK_ENR RCC_AHBENR
+#define STM32_IWDG 0x40003000U
+#define FLASH_OBR REG32(STM32_FLASH + 0x1CU)
+#define FLASH_OBR_IWDG_SW (1U << 8)
+#define STM32_IWDG_HARDWARE() ((FLASH_OBR & FLASH_OBR_IWDG_SW) == 0U)   /* option: IWDG always on */
+#define STM32_IDCODE 0xE0042000U
+#define STM32_UID 0x1FFFF7ACU
+
+#define GPIO_BASE(port) (0x48000000U + 0x400U * (port))
+#define STM32_GPIO_HIGH_SPEED 3U       /* x0 low, 01 medium, 11 high */
+#define GPIO_ENABLE(port) (RCC_AHBENR |= 1U << (17U + (port)))
+#define GPIO_RESET(port) (RCC_AHBRSTR |= 1U << (17U + (port)), RCC_AHBRSTR &= ~(1U << (17U + (port))))
+
+#define CAN1_BASE 0x40006400U
+#define CAN1_ENR RCC_APB1ENR
+#define CAN1_RSTR RCC_APB1RSTR
+#define CAN1_BIT (1U << 25)
+#define CAN1_CLK stm32_pclk1
+#define CAN1_FILTER_BASE CAN1_BASE
+#define CAN1_FIRST_BANK 0U
+
+#define USART1_BASE 0x40013800U
+#define USART1_ENR RCC_APB2ENR
+#define USART1_RSTR RCC_APB2RSTR
+#define USART1_BIT (1U << 14)
+#define USART1_CLK stm32_pclk2
+#define USART2_BASE 0x40004400U
+#define USART2_ENR RCC_APB1ENR
+#define USART2_RSTR RCC_APB1RSTR
+#define USART2_BIT (1U << 17)
+#define USART2_CLK stm32_pclk1
+#define USART3_BASE 0x40004800U
+#define USART3_ENR RCC_APB1ENR
+#define USART3_RSTR RCC_APB1RSTR
+#define USART3_BIT (1U << 18)
+#define USART3_CLK stm32_pclk1
+#define USART4_BASE 0x40004C00U
+#define USART4_ENR RCC_APB1ENR
+#define USART4_RSTR RCC_APB1RSTR
+#define USART4_BIT (1U << 19)
+#define USART4_CLK stm32_pclk1
+#define USART5_BASE 0x40005000U
+#define USART5_ENR RCC_APB1ENR
+#define USART5_RSTR RCC_APB1RSTR
+#define USART5_BIT (1U << 20)
+#define USART5_CLK stm32_pclk1
+
+/* USB (F302/F303): no internal D+ pull-up (MUBL_USB_PULLUP_PIN, or D+ is driven low to detach).
+ * F302/F303xB/C: 512 B packet memory at 32-bit stride, shared with CAN, so not both at once;
+ * xD/xE (MUBL_F3_USB_PMA_16BIT): 768 B at 16-bit stride beside CAN. */
+#define STM32_USB 0x40005C00U
+#define STM32_USB_PMA 0x40006000U
+#ifdef MUBL_F3_USB_PMA_16BIT
+#define STM32_USB_PMA_STRIDE 1U
+#else
+#define STM32_USB_PMA_STRIDE 2U
+#if MUBL_USB && MUBL_DRONECAN
+#error "F302/F303xB/C: USB and CAN share their packet memory and cannot both run (set MUBL_F3_USB_PMA_16BIT on xD/xE)"
+#endif
+#endif
+#define STM32_USB_DPPU 0
+#define USB_CLOCK_ENR RCC_APB1ENR
+#define USB_RSTR RCC_APB1RSTR
+#define USB_CLOCK_BIT (1U << 23)
+#if MUBL_USB && !defined(MUBL_USB_DP_PIN)
+#error "F3 USB needs MUBL_USB_DM_PIN and MUBL_USB_DP_PIN (PA11, PA12, alternate function 14)"
+#endif
+
+extern uint32_t stm32_sysclk, stm32_pclk1, stm32_pclk2;
+
+#endif

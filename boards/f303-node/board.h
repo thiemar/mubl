@@ -1,0 +1,33 @@
+/*
+ * STM32F303CC node: 256 KiB flash, 40 KiB RAM, 8 MHz crystal.
+ * DroneCAN on PA11/PA12; serial protocol on USART1 (PA9/PA10); SRXL2 single-wire on USART2 (PA2).
+ */
+#define MUBL_FAMILY MUBL_FAMILY_F3
+#define MUBL_BOARD_NAME "org.sfwa.mubl.f303"
+#define MUBL_BOARD_ID 4301
+
+#define MUBL_BL_SIZE (16 * 1024)
+#define MUBL_APP_SIZE (256 * 1024 - MUBL_BL_SIZE)
+#define MUBL_RAM_BASE 0x20000000
+#define MUBL_RAM_SIZE (40 * 1024)
+#define MUBL_STACK_RAM {0x10000000, 0x10002000}     /* CCM */
+#define MUBL_HSE_HZ 8000000
+
+#define MUBL_DRONECAN 1
+#define MUBL_SERIAL 1
+#define MUBL_SRXL2 1
+#define MUBL_LINK_PRIORITY MUBL_LINK_DRONECAN, MUBL_LINK_SRXL2, MUBL_LINK_SERIAL
+#define MUBL_COMPAT_PX4_CAN 1
+
+#define MUBL_CAN_RX_PIN MUBL_PIN('A', 11, 9)
+#define MUBL_CAN_TX_PIN MUBL_PIN('A', 12, 9)
+
+#define MUBL_UART0_INSTANCE 1
+#define MUBL_UART0_TX_PIN MUBL_PIN('A', 9, 7)
+#define MUBL_UART0_RX_PIN MUBL_PIN('A', 10, 7)
+#define MUBL_SERIAL_PORT 0
+
+#define MUBL_UART1_INSTANCE 2
+#define MUBL_UART1_TX_PIN MUBL_PIN('A', 2, 7)    /* single wire */
+#define MUBL_SRXL2_PORT 1
+#define MUBL_SRXL2_DEVICE_ID 0x40
