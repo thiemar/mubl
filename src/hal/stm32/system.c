@@ -221,9 +221,20 @@ void hal_reset(void)
     }
 }
 
+#ifdef MUBL_OUTPUT_PINS
+static const struct {
+    uint16_t pin;
+    uint8_t level;
+} outputs[] = {MUBL_OUTPUT_PINS};
+#define N_OUTPUTS (sizeof outputs / sizeof outputs[0])
+#endif
+
 void hal_init(void)
 {
     stm32_clock_init();
+#ifdef MUBL_OUTPUT_PINS
+    for (uint32_t i = 0; i < N_OUTPUTS; i++) stm32_pin_output(outputs[i].pin, outputs[i].level != 0U);
+#endif
     ticks = 0;
     SYST_RVR = stm32_sysclk / 1000U - 1U;
     SYST_CVR = 0;
@@ -276,6 +287,9 @@ static uint32_t used_ports(void)
 #endif
 #ifdef MUBL_HOLD_PIN
     m |= PORT_BIT(MUBL_HOLD_PIN);
+#endif
+#ifdef MUBL_OUTPUT_PINS
+    for (uint32_t i = 0; i < N_OUTPUTS; i++) m |= PORT_BIT(outputs[i].pin);
 #endif
     return m;
 }

@@ -162,7 +162,10 @@
 
 /* MUBL_HOLD_PIN: an input that keeps the bootloader running; MUBL_LED_PIN: on in the bootloader,
  * blinking while writing.  MUBL_CAN_STANDBY_PIN: a transceiver standby input, driven to the
- * level that is not MUBL_CAN_STANDBY_LEVEL. */
+ * level that is not MUBL_CAN_STANDBY_LEVEL.  MUBL_OUTPUT_PINS: outputs held at a level while the
+ * bootloader runs (chip selects, power switches), {pin, level} pairs:
+ *   #define MUBL_OUTPUT_PINS {MUBL_PIN('B', 12, 0), 1}, {MUBL_PIN('C', 13, 0), 0}
+ * Like every pin the bootloader uses, their ports are reset before the application starts. */
 #ifndef MUBL_HOLD_LEVEL
 #define MUBL_HOLD_LEVEL 0             /* 0: active low (pulled up), 1: active high (pulled down) */
 #endif

@@ -27,6 +27,7 @@ VARIANTS = [
     ('f042-node', 'all four', '-DMUBL_USB=1'),
     ('f405-node', 'without USB', '-DMUBL_USB=0'),
     ('h743-node', 'without USB', '-DMUBL_USB=0'),
+    ('tbs-lucid-h7', 'USB only', '-DMUBL_DRONECAN=0 -DMUBL_SERIAL=0'),
 ]
 
 

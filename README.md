@@ -256,6 +256,8 @@ A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f
 | `f405-node` | STM32F405RG | USB, serial, DroneCAN, SRXL2 | sector 0 (16 KiB, 164 B free); AP_Periph and PX4 handoff |
 | `h743-node` | STM32H743ZI (Nucleo) | USB (OTG_FS), DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
 | `h735-node` | STM32H735 | USB (OTG_HS), DroneCAN over CAN FD, serial | direct SMPS; check against your board |
+| `h735g-dk` | STM32H735IG (ST STM32H735G-DK) | USB (OTG_HS) | direct SMPS; LED1, user button |
+| `tbs-lucid-h7` | STM32H743 (TBS Lucid H7) | USB (OTG_FS), DroneCAN (FDCAN1), serial (UART7) | ArduPilot layout and board ID (variants by `MUBL_BOARD_ID`); parameter sectors kept |
 
 The settings and their defaults are in [src/mubl_config.h](src/mubl_config.h).  The ones every
 board sets: `MUBL_FAMILY`, `MUBL_BL_SIZE`, `MUBL_APP_SIZE`, `MUBL_RAM_BASE`, `MUBL_RAM_SIZE`,
@@ -264,7 +266,9 @@ their pins: `MUBL_CAN_RX_PIN`/`TX_PIN`, `MUBL_UARTn_INSTANCE`/`TX_PIN`/`RX_PIN` 
 single-wire half-duplex port), `MUBL_SERIAL_PORT`, `MUBL_SRXL2_PORT`.  H7 boards must also set
 `MUBL_H7_PWR_CR3` to the supply their hardware is wired for.  Boards with RAM besides
 `MUBL_RAM_BASE`/`SIZE` list it in `MUBL_STACK_RAM` if an application may put its stack there.  Pins are `MUBL_PIN('A', 11, 4)`:
-port, number, alternate function.
+port, number, alternate function.  Optional pins: `MUBL_LED_PIN`, `MUBL_HOLD_PIN`, and
+`MUBL_OUTPUT_PINS`, outputs held at a level while the bootloader runs (chip selects, power
+switches: `tbs-lucid-h7` keeps its VTX supplies off, as ArduPilot's bootloader does).
 
 ## Adding a part
 
@@ -327,6 +331,9 @@ call-graph output plus an exception frame; it is an upper bound.
 | f405-node | all four | 16,220 B | 2,672 B | 412 B |
 | h743-node | all four | 16,472 B | 2,720 B | 432 B |
 | h735-node | USB, DroneCAN (CAN FD), serial | 15,456 B | 2,576 B | 816 B |
+| h735g-dk | USB | 8,656 B | 896 B | 308 B |
+| tbs-lucid-h7 | USB, DroneCAN, serial | 15,120 B | 2,560 B | 432 B |
+| tbs-lucid-h7 | USB | 8,900 B | 896 B | 316 B |
 | f042, serial only | | 5,792 B | 640 B | 348 B |
 | f042, SRXL2 only | | 6,172 B | 536 B | 436 B |
 
