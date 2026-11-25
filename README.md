@@ -4,7 +4,7 @@ A small, freestanding C bootloader for STM32 with firmware update over **DroneCA
 **PX4/ArduPilot serial bootloader protocol** (on a UART and over **USB**) and **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 are
 supported as shipped; other parts are added with a board file and, where the peripherals differ, a
 family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
-[sfwa-dronecan](../dronecan)'s bootloader profile for the DroneCAN wire format.
+[sfwa-dronecan](https://github.com/sfwa/dronecan)'s bootloader profile for the standard DroneCAN wire format.
 
 Status: everything above the register level is tested on a host simulation (275 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
@@ -27,7 +27,7 @@ STM32H735G-DK (`h735g-dk`) and a TBS Lucid H7 (`tbs-lucid-h7`), which boots stoc
 ## How it boots
 
 After reset µBL reads the handoff the application may have left, checks the application, starts
-its links and polls them.  It starts the application `MUBL_BOOT_DELAY_MS` (1 s) after reset unless:
+its links and polls them.  It starts the application `MUBL_BOOT_DELAY_MS` (default 1 s) after reset unless:
 
 | Stays because | |
 | --- | --- |
@@ -390,10 +390,6 @@ stay (`b`).  Run on a kit on 2026-11-25, with the bootloader flashed over SWD:
   application's stay request is read (stay reason requested); LED1 is on in the bootloader;
 - with the USB cable out, a reset starts the application after the boot delay (handoff: no link).
 
-Not covered there: the user button, and power loss during an update.  The run found the handoff to the application being
-written after `hal_deinit` had stopped the CRC unit (every F3 and H7 board); the simulation now
-models that unit's clock (`BootH7CrcUnit`, `UpdateH7CrcUnit`, `AppHeaderCrcUnit`).
-
 `tests/hw/usb-app` is a test application with a USB console instead, for boards without a debug
 probe's serial port: it brings up USB with µBL's own driver (product "mubl test app"), and answers
 `i` (version, VTOR, handoff, uptime), `r` and `b` there (`make BOARD=tbs-lucid-h7` or `h735g-dk`).
@@ -407,10 +403,6 @@ ROM DFU loader (BOOT button held at plug-in) and started from it:
 - stock ArduCopter 4.7.0-beta3 (no descriptor: `MUBL_RAW_IMAGES`), 1.5 MB, uploads through
   `uploader.py` in 24 s and starts: it enumerates as ArduPilot's TBS_LUCID_H7 and sends heartbeats
   and AUTOPILOT_VERSION (4.7.0, board 5250), with the parameters in sectors 14-15 untouched.
-
-That run found ArduCopter faulting before it reached USB: ChibiOS's start-up uses its stack in SRAM1
-before its clock set-up enables the D2-domain SRAMs, which ArduPilot's bootloader leaves enabled.
-µBL now starts H7 applications with SRAM1-2 (and SRAM3 with `MUBL_H7_SRAM3`) clocked.
 
 ## Limitations
 
