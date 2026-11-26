@@ -1,10 +1,12 @@
 # µBL
 
-A small, freestanding C bootloader for STM32 with firmware update over **DroneCAN**, the
-**PX4/ArduPilot serial bootloader protocol** (on a UART and over **USB**) and **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 are
-supported as shipped; other parts are added with a board file and, where the peripherals differ, a
-family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
+A small (< 8 KiB for any one interface, < 16 KiB for all four), freestanding C bootloader for STM32 with 
+firmware update over **USB**, **serial**, **DroneCAN**, and  **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 
+are supported as shipped; other parts are added with a board file and, where the peripherals differ, 
+a family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](https://github.com/sfwa/dronecan)'s bootloader profile for the standard DroneCAN wire format.
+
+Serial and USB use the **PX4/ArduPilot serial bootloader protocol** so existing tools can be used without modification.
 
 Status: everything above the register level is tested on a host simulation (275 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
