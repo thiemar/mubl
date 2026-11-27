@@ -26,6 +26,7 @@ static bool wait_set(volatile uint32_t* reg, uint32_t mask, uint32_t timeout)
     return true;
 }
 
+#if MUBL_FAMILY != MUBL_FAMILY_G4 || MUBL_DRONECAN
 static bool start_hse(void)
 {
     if (MUBL_HSE_HZ == 0) return false;
@@ -35,6 +36,7 @@ static bool start_hse(void)
     RCC_CR &= ~(RCC_CR_HSEON | RCC_CR_HSEBYP);
     return false;
 }
+#endif
 
 #if MUBL_FAMILY == MUBL_FAMILY_F0 || MUBL_FAMILY == MUBL_FAMILY_F3
 
@@ -221,6 +223,51 @@ MUBL_STATIC_ASSERT(MUBL_HSE_HZ != 0, "USB on F4 needs a crystal");
 bool stm32_usb_clock(bool on)
 {
     return !on || on_hse;
+}
+#endif
+
+#elif MUBL_FAMILY == MUBL_FAMILY_G4
+
+void stm32_clock_init(void)
+{
+    /* Disable UCPD dead-battery pull-down resistors on PA9 / PB6 (needed when USART1 uses PA9). */
+    RCC_APB1ENR1 |= RCC_APB1ENR1_PWREN;
+    (void)RCC_APB1ENR1;
+    PWR_CR3 |= PWR_CR3_UCPD_DBDIS;
+    RCC_APB1ENR1 &= ~RCC_APB1ENR1_PWREN;
+#if MUBL_DRONECAN
+    (void)start_hse();                              /* FDCAN's kernel clock */
+#endif
+    stm32_sysclk = stm32_pclk1 = stm32_pclk2 = 16000000U;
+}
+
+void stm32_clock_deinit(void)
+{
+    RCC_CR &= ~RCC_CR_HSEON;
+    while (RCC_CR & RCC_CR_HSERDY) {
+    }
+    RCC_CR &= ~RCC_CR_HSEBYP;                       /* writable once HSE is off */
+}
+
+#if MUBL_USB
+/* HSI48 for the USB FS device peripheral, trimmed by the CRS against USB SOF packets. */
+bool stm32_usb_clock(bool on)
+{
+    if (on) {
+        RCC_CRRCR |= RCC_CRRCR_HSI48ON;
+        if (!wait_set(&RCC_CRRCR, RCC_CRRCR_HSI48RDY, HSE_TIMEOUT)) return false;
+        RCC_CCIPR &= ~(3U << RCC_CCIPR_CLK48SEL_POS);    /* 00: HSI48 */
+        RCC_APB1ENR1 |= CRS_BIT;
+        (void)RCC_APB1ENR1;
+        CRS_CFGR = (CRS_CFGR & ~(3U << CRS_CFGR_SYNCSRC_POS)) | (CRS_SYNC_USB << CRS_CFGR_SYNCSRC_POS);
+        CRS_CR |= CRS_CR_AUTOTRIMEN | CRS_CR_CEN;
+        return true;
+    }
+    RCC_APB1RSTR1 |= CRS_BIT;
+    RCC_APB1RSTR1 &= ~CRS_BIT;
+    RCC_APB1ENR1 &= ~CRS_BIT;
+    RCC_CRRCR &= ~RCC_CRRCR_HSI48ON;
+    return true;
 }
 #endif
 

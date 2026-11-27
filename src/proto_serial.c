@@ -337,7 +337,7 @@ void usb_start(void)
 void usb_poll(uint32_t now)
 {
     const uint8_t ev = hal_usb_poll();
-    if (ev & HAL_USB_SOF) {
+    if (ev & (HAL_USB_SOF | HAL_USB_RESET)) {
         usb.last_sof = now;
         if (!usb.host) {
             usb.host = 1;

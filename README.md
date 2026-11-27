@@ -1,20 +1,20 @@
 # µBL
 
-A small (< 8 KiB for any one interface, < 16 KiB for all four), freestanding C bootloader for STM32 with 
-firmware update over **USB**, **serial**, **DroneCAN**, and  **Spektrum SRXL2**.  STM32F0, F3, F4 and H7 
-are supported as shipped; other parts are added with a board file and, where the peripherals differ, 
+A small (< 8 KiB for any one interface, < 16 KiB for all four), freestanding C bootloader for STM32 with
+firmware update over **USB**, **serial**, **DroneCAN**, and **Spektrum SRXL2**.  STM32F0, F3, F4, G4 and H7
+are supported as shipped; other parts are added with a board file and, where the peripherals differ,
 a family header.  It descends from [thiemar/bootloader](https://github.com/thiemar/bootloader) and uses
 [sfwa-dronecan](https://github.com/sfwa/dronecan)'s bootloader profile for the standard DroneCAN wire format.
 
 Serial and USB use the **PX4/ArduPilot serial bootloader protocol** so existing tools can be used without modification.
 
-Status: everything above the register level is tested on a host simulation (275 tests, including
+Status: everything above the register level is tested on a host simulation (290 tests, including
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
 Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
 operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
-checked against ST's CMSIS headers.  **On hardware, only USB on two H7 boards has run so far**: the
-STM32H735G-DK (`h735g-dk`) and a TBS Lucid H7 (`tbs-lucid-h7`), which boots stock ArduCopter (see
-[Hardware tests](#hardware-tests)); DroneCAN, the UART links and the F0/F3/F4 parts have not.
+checked against ST's CMSIS headers.  **On hardware, only USB on two H7 boards and one G4 board has run so far**: the
+STM32H735G-DK (`h735g-dk`), a TBS Lucid H7 (`tbs-lucid-h7`, which boots stock ArduCopter), and a
+Mateksys mR24-30 (`matek-mr24-30`; see [Hardware tests](#hardware-tests)); DroneCAN, the UART links and the F0/F3/F4 parts have not.
 
 ## Contents
 
@@ -92,9 +92,9 @@ All links drive one update engine (`src/update.c`):
   are held in RAM.  When the image is complete, sectors after it that are not blank are erased, the
   image is validated with the held bytes substituted, and only then are they programmed, last unit
   first, so the initial SP is the last thing written.  Every programmed unit is read back.
-- **Programming granule** per family: half-words (F0/F3), words (F4), 256-bit ECC flash words (H7).
-- **ECC.**  On H7 an interrupted erase or program can leave flash that faults when read.  Image
-  checks and CRCs run under `hal_guarded`, which turns that bus fault into "invalid image" instead of
+- **Programming granule** per family: half-words (F0/F3), words (F4), 64-bit ECC double words (G4), 256-bit ECC flash words (H7).
+- **ECC.**  On G4 and H7 an interrupted erase or program can leave flash that faults when read (NMI on G4, bus fault on H7).  Image
+  checks and CRCs run under `hal_guarded`, which turns that fault into "invalid image" instead of
   a reset loop.
 
 The simulation cuts power at each flash operation of an update over a previous image, leaving the
@@ -118,7 +118,7 @@ library), generated into `src/dronecan/{classic,fd}` by `tools/gen_dronecan.sh`.
 - **Update**: `uavcan.protocol.file.Read`, 256 bytes at a time, one request outstanding, 1 s timeout,
   5 retries; a short read ends the file.  The node boots the image if it validates, otherwise stays
   with health ERROR.  Optional LogMessage on start, success and failure (`MUBL_DC_LOG`).
-- **CAN FD** on H7 (`MUBL_CAN_FD`, optional bit-rate switching with `MUBL_CAN_FD_DATA_BITRATE`, with
+- **CAN FD** on G4 and H7 (`MUBL_CAN_FD`, optional bit-rate switching with `MUBL_CAN_FD_DATA_BITRATE`, with
   transmitter delay compensation).  FDCAN recovers from bus-off itself; bxCAN uses automatic bus-off
   recovery.
 - One interface; hardware filters pass only service frames addressed to the node once it has an ID.
@@ -151,11 +151,11 @@ through a UART.  `SET_BAUD` is acknowledged and ignored.  Only one link owns an 
   enumerates its own USB afresh.  An application asks for the bootloader over USB with the handoff
   (link 4), then resets; only USB then runs.
 - **Drivers.**  `src/hal/usb/usb_cdc.c` holds the descriptors and requests; `usb_fs.c` drives the
-  F0/F3 USB peripheral (ported from µCAN's driver), `usb_otg.c` the OTG core of F4 and H7.  Both are
+  F0/F3/G4 USB peripheral (ported from µCAN's driver), `usb_otg.c` the OTG core of F4 and H7.  Both are
   polled; the USB interrupt is not used.  Received data is taken only as fast as the protocol
   consumes it, so the host is held off (NAK) while flash is busy.
 - **Clocks.**  F0: the crystal's PLL, or HSI48 trimmed by the CRS against the host's frames.  F3, F4:
-  the crystal only (USB stays off the bus if it fails).  H7: HSI48 with the CRS, and VDD33USB.
+  the crystal only (USB stays off the bus if it fails).  G4: HSI48 with the CRS.  H7: HSI48 with the CRS, and VDD33USB.
 - **IDs.**  `MUBL_USB_VID`/`PID` default to ST's virtual COM port (0483:5740, as µCAN); the
   product string is the board name, the serial number the unique ID.
 
@@ -164,6 +164,7 @@ through a UART.  `SET_BAUD` is acknowledged and ignored.  Only one link owns an 
 | F0 (F04x/F07x/F09x) | USB, internal D+ pull-up | none (PA11/PA12 are dedicated) |
 | F3 (F302/F303) | USB, no internal pull-up | `MUBL_USB_DM_PIN`/`DP_PIN` (AF14); `MUBL_USB_PULLUP_PIN` for a switched pull-up, otherwise D+ is driven low to detach; `MUBL_F3_USB_PMA_16BIT` on xD/xE |
 | F4 | OTG_FS | `MUBL_USB_DM_PIN`/`DP_PIN` (AF10); `MUBL_F4_OTG_VBDEN` on F446/F412-class cores; a system clock whose VCO is a multiple of 48 MHz |
+| G4 | USB, internal D+ pull-up | none (PA11/PA12 are dedicated analog USB pads); HSI48 trimmed by the CRS against USB SOF |
 | H7 | OTG_HS or OTG_FS, embedded FS PHY | `MUBL_USB_OTG_INSTANCE` (1: OTG_HS, 2: OTG_FS), its pins (AF10 on PA11/PA12, AF12 on PB14/PB15) |
 
 ## SRXL2
@@ -224,7 +225,7 @@ CRCs, by the instruction counts of the generated loops (not measured):
 
 | | CRC-32 | CRC-64 (legacy format, PX4 handoff) |
 | --- | --- | --- |
-| F3, H7 | CRC unit (`MUBL_HW_CRC32`): words fed with each byte's bits reversed, result reversed; about 3 cycles a byte | 16-entry table |
+| F3, G4, H7 | CRC unit (`MUBL_HW_CRC32`): words fed with each byte's bits reversed, result reversed; about 3 cycles a byte | 16-entry table |
 | F4 | software, 16-entry table (its CRC unit cannot do the reflected CRC-32) | 16-entry table |
 | F0 | software, bit by bit: about 90 cycles a byte, so about 45 ms for a 24 KB image at 48 MHz | bit by bit |
 
@@ -255,7 +256,7 @@ direction and cleared as soon as it is read, so a later reset cannot replay it.
 
 ## Boards and configuration
 
-A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f4|h7`, `CAN_FD := 1`).
+A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f4|g4|h7`, `CAN_FD := 1`).
 
 | Board | Part | Links | Notes |
 | --- | --- | --- | --- |
@@ -265,6 +266,8 @@ A board is `boards/<name>/board.h` (C macros) and `board.mk` (`FAMILY := f0|f3|f
 | `f303-node` | STM32F303CC | DroneCAN, serial, SRXL2 | PX4 handoff |
 | `f303-usb` | STM32F303CC | USB, serial, SRXL2 | fixed D+ pull-up; no CAN (shared packet memory) |
 | `f405-node` | STM32F405RG | USB, serial, DroneCAN, SRXL2 | sector 0 (16 KiB, 156 B free); AP_Periph and PX4 handoff |
+| `matek-mr24-30` | STM32G431KB (Mateksys mR24-30) | USB, serial | 16 KiB bootloader, 108 KiB app, top 4 KiB config kept; PA/LNA/fan held off |
+| `g474-node` | STM32G474RE | USB, DroneCAN (CAN FD), serial, SRXL2 | dual-bank 512 KiB flash, 24 MHz crystal |
 | `h743-node` | STM32H743ZI (Nucleo) | USB (OTG_FS), DroneCAN (FDCAN1), serial (VCP), SRXL2 | LDO supply, HSE bypass |
 | `h735-node` | STM32H735 | USB (OTG_HS), DroneCAN over CAN FD, serial | direct SMPS; check against your board |
 | `h735g-dk` | STM32H735IG (ST STM32H735G-DK) | USB (OTG_HS) | direct SMPS; LED1, user button |
@@ -283,10 +286,10 @@ switches: `tbs-lucid-h7` keeps its VTX supplies off, as ArduPilot's bootloader d
 
 ## Adding a part
 
-A part whose peripherals match a supported family (most STM32F0/F3/F4/H74x/H72x/H73x) needs only a
+A part whose peripherals match a supported family (most STM32F0/F3/F4/G4/H74x/H72x/H73x) needs only a
 board file: flash and RAM sizes, pins, clock, and for F0 parts with 2 KiB pages `MUBL_FLASH_PAGE`.
 A new family needs `src/hal/stm32/family_<x>.h` (base addresses and enable bits), its clock set-up in
-`clock.c`, and its flash routine in `flash.c` if the controller differs (G0/G4/L4 program 64-bit
+`clock.c`, and its flash routine in `flash.c` if the controller differs (G0/L4, like G4, program 64-bit
 double words with ECC; H7A3/B0 use 128-bit words and 8 KiB sectors).  bxCAN, FDCAN, USART v1/v2 and
 GPIO are shared.  Add the part to `tests/regcheck/run.py` so its registers are checked against ST's
 header.  Another vendor needs its own `src/hal/<vendor>` implementing `src/hal/hal.h`.
@@ -306,7 +309,7 @@ the PATH (`CROSS=` to choose).  Builds use LTO, `-Os`, no C library, and `-Werro
 
 ## Bring-up on a new board
 
-Only USB on `h735g-dk` and `tbs-lucid-h7` has run on hardware so far, so on other boards check these in order the first time:
+Only USB on `h735g-dk`, `tbs-lucid-h7` and `matek-mr24-30` has run on hardware so far, so on other boards check these in order the first time:
 
 1. Flash the bootloader alone: `st-flash write build/<board>/mubl.bin 0x08000000` (or
    `STM32_Programmer_CLI -c port=SWD -w build/<board>/mubl.bin 0x08000000`).  With no application it
@@ -323,7 +326,7 @@ Only USB on `h735g-dk` and `tbs-lucid-h7` has run on hardware so far, so on othe
    and appears in the DroneCAN GUI tool with the board name; then update it from there.
 5. SRXL2: `tools/mubl_srxl2.py <port> app.bin` through a half-duplex adapter.
 6. Interrupted update: cut power during an update and check the board comes back in the
-   bootloader; on H7, also during the final second (the first flash word is written last).
+   bootloader; on G4 and H7, also during the final second (the first flash word is written last).
 
 ## Size
 
@@ -334,12 +337,14 @@ call-graph output plus an exception frame; it is an upper bound.
 | --- | --- | ---: | ---: | ---: |
 | f042-can | DroneCAN | 7,468 B | 1,656 B | 388 B |
 | f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,576 B | 2,136 B | 444 B |
-| f042-usb | USB | 7,804 B | 840 B | 316 B |
-| f042-usb | USB, DroneCAN | 12,488 B | 2,176 B | 388 B |
-| f042-node | all four | 15,244 B | 2,672 B | 444 B |
+| f042-usb | USB | 7,840 B | 840 B | 316 B |
+| f042-usb | USB, DroneCAN | 12,524 B | 2,176 B | 388 B |
+| f042-node | all four | 15,284 B | 2,672 B | 444 B |
 | f303-node | DroneCAN, serial, SRXL2 | 12,292 B | 2,144 B | 412 B |
-| f303-usb | USB, serial, SRXL2 | 10,900 B | 1,332 B | 412 B |
+| f303-usb | USB, serial, SRXL2 | 10,924 B | 1,332 B | 412 B |
 | f405-node | all four | 16,228 B | 2,672 B | 412 B |
+| g474-node | all four (CAN FD) | 16,636 B | 2,688 B | 816 B |
+| matek-mr24-30 | USB, serial | 9,852 B | 1,168 B | 332 B |
 | h743-node | all four | 16,504 B | 2,720 B | 432 B |
 | h735-node | USB, DroneCAN (CAN FD), serial | 15,488 B | 2,576 B | 816 B |
 | h735g-dk | USB | 8,688 B | 896 B | 308 B |
@@ -363,7 +368,7 @@ USB host that enumerates the device) as a shared library and runs:
 
 | File | Covers | Needs |
 | --- | --- | --- |
-| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/H7 flash, power loss at every operation (also of raw images with `MUBL_RAW_IMAGES`), `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
+| `test_core.py` | boot policy, every image check, handoff and its CRC, boot-loop counting, ECC faults, the update engine on F0/F4/G4/H7 flash, power loss at every operation (also of raw images with `MUBL_RAW_IMAGES`), `app/mubl_app.h`, the Cortex-M0 divide against native division, the CRC-unit driver against a model of the unit, and boot, update and handoff with that model in the simulation (its clock stops in `hal_deinit`) | |
 | `test_dronecan.py` | allocation, GetNodeInfo, autobaud, `FirmwareUpdater` end to end, AP_Periph and PX4 handoffs, RestartNode, rejected images, a file server lost mid-update, busy with another link | sfwa-dronecan checkout at `../dronecan` (`SFWA_DRONECAN=`) |
 | `test_serial.py` | ArduPilot's `uploader.py` unmodified through a pseudo-terminal; protocol edge cases | `../ardupilot/Tools/scripts/uploader.py` (`UPLOADER_PY=`); a pty (the macOS sandbox denies them) |
 | `test_srxl2.py` | handshake against Spektrum's reference slave, the update packet with `tools/mubl_srxl2.py` (its protocol class, and its command line through a pseudo-terminal), retries, 400 kbaud (also with answers lost while the device holds the fast rate) | a pty for the command-line test |
@@ -406,9 +411,17 @@ ROM DFU loader (BOOT button held at plug-in) and started from it:
   `uploader.py` in 24 s and starts: it enumerates as ArduPilot's TBS_LUCID_H7 and sends heartbeats
   and AUTOPILOT_VERSION (4.7.0, board 5250), with the parameters in sectors 14-15 untouched.
 
+Run on a Mateksys mR24-30 (`matek-mr24-30`, STM32G431KB) on 2026-11-28, written through ST's ROM
+DFU loader and started from it:
+
+- USB FS enumerates over HSI48 + CRS as "Matek mR24-30-BL" (0483:5740, serial number = unique ID)
+  and stays while connected;
+- `uploader.py --identify` reports protocol 5, board 6431, 108 KiB (110,592 B, top 4 KiB config
+  reserved) and STM32G431 rev 0.
+
 ## Limitations
 
-- On hardware so far only USB on the STM32H735G-DK and a TBS Lucid H7; first bring-up elsewhere
+- On hardware so far only USB on the STM32H735G-DK, a TBS Lucid H7 and a Mateksys mR24-30; first bring-up elsewhere
   should watch clocks, CAN bit timing and the H7 supply.
 - One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
 - USB: no VBUS sensing (a suspended host counts as gone); full speed only; the device always

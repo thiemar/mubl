@@ -90,6 +90,9 @@ static bool hw_start(void)
      * host enumerates the bootloader afresh. */
     stm32_pin_output(MUBL_USB_DP_PIN, false);
     hal_delay_us(MUBL_USB_DETACH_MS * 1000U);
+#elif defined(MUBL_USB_PULLUP_PIN)
+    stm32_pin_output(MUBL_USB_PULLUP_PIN, !MUBL_USB_PULLUP_LEVEL);
+    hal_delay_us(MUBL_USB_DETACH_MS * 1000U);
 #endif
 #ifdef MUBL_USB_DM_PIN
     stm32_pin_af(MUBL_USB_DM_PIN, false, false);
@@ -98,6 +101,14 @@ static bool hw_start(void)
 #endif
 #endif
     USB_CLOCK_ENR |= USB_CLOCK_BIT;
+    USB_RSTR |= USB_CLOCK_BIT;
+    USB_RSTR &= ~USB_CLOCK_BIT;
+    (void)USB_CLOCK_ENR;
+#if STM32_USB_DPPU
+    /* Resetting the peripheral drops DPPU: wait long enough for a host that was talking to an
+     * application (or ROM DFU) to notice the disconnect and enumerate the bootloader afresh. */
+    hal_delay_us(MUBL_USB_DETACH_MS * 1000U);
+#endif
     USB_REG(USB_CNTR) = USB_CNTR_FRES;           /* transceiver on (PDWN 0), core held in reset */
     hal_delay_us(2);                             /* t_STARTUP: 1 us */
     USB_REG(USB_CNTR) = 0;                       /* every interrupt masked: ISTR is polled */

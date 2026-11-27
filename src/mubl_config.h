@@ -58,6 +58,8 @@
 #define MUBL_FLASH_GRANULE 2
 #elif MUBL_FAMILY == MUBL_FAMILY_F4
 #define MUBL_FLASH_GRANULE 4
+#elif MUBL_FAMILY == MUBL_FAMILY_G4
+#define MUBL_FLASH_GRANULE 8
 #elif MUBL_FAMILY == MUBL_FAMILY_H7
 #define MUBL_FLASH_GRANULE 32
 #else
@@ -65,15 +67,15 @@
 #endif
 #endif
 #ifndef MUBL_FLASH_ECC
-#define MUBL_FLASH_ECC (MUBL_FAMILY == MUBL_FAMILY_H7)   /* reads can raise uncorrectable-error faults */
+#define MUBL_FLASH_ECC (MUBL_FAMILY == MUBL_FAMILY_H7 || MUBL_FAMILY == MUBL_FAMILY_G4) /* reads can raise uncorrectable-error faults */
 #endif
-/* CRC-32 (image checks, GET_CRC, SRXL2 FINISH, handoff): in the CRC unit on F3 and H7
+/* CRC-32 (image checks, GET_CRC, SRXL2 FINISH, handoff): in the CRC unit on F3, G4 and H7
  * (MUBL_HW_CRC32; F4's unit cannot do the reflected CRC-32; F0's can, but the driver is larger than
  * a bitwise loop), otherwise in software.  Software CRCs (CRC-32 without the CRC unit, CRC-64 for
  * legacy images and the PX4 handoff) use 16-entry tables (64 B, 128 B) unless MUBL_CRC32_TABLE /
  * MUBL_CRC64_TABLE are 0: on F0 both run bit by bit, smaller and slower. */
 #ifndef MUBL_HW_CRC32
-#define MUBL_HW_CRC32 (MUBL_FAMILY == MUBL_FAMILY_F3 || MUBL_FAMILY == MUBL_FAMILY_H7)
+#define MUBL_HW_CRC32 (MUBL_FAMILY == MUBL_FAMILY_F3 || MUBL_FAMILY == MUBL_FAMILY_G4 || MUBL_FAMILY == MUBL_FAMILY_H7)
 #endif
 #ifndef MUBL_CRC32_TABLE
 #define MUBL_CRC32_TABLE (MUBL_FAMILY != MUBL_FAMILY_F0)

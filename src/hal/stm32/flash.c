@@ -147,6 +147,78 @@ bool hal_flash_program(uint32_t addr, const uint8_t* data)
     return finish();
 }
 
+#elif MUBL_FAMILY == MUBL_FAMILY_G4
+
+MUBL_STATIC_ASSERT(MUBL_FLASH_GRANULE == 8, "G4 programs 64-bit double words");
+MUBL_STATIC_ASSERT(MUBL_APP_BASE % MUBL_FLASH_PAGE == 0 && MUBL_APP_SIZE % MUBL_FLASH_PAGE == 0,
+                   "the application region must be whole pages");
+
+static void flush_caches(void)
+{
+    const uint32_t acr = FLASH_ACR;
+    FLASH_ACR = acr & ~(FLASH_ACR_ICEN | FLASH_ACR_DCEN);
+    FLASH_ACR = (acr & ~(FLASH_ACR_ICEN | FLASH_ACR_DCEN)) | FLASH_ACR_ICRST | FLASH_ACR_DCRST;
+    FLASH_ACR = acr & ~(FLASH_ACR_ICEN | FLASH_ACR_DCEN);
+    FLASH_ACR = acr;
+}
+
+static void unlock(void)
+{
+    if (FLASH_CR & FLASH_CR_LOCK) {
+        FLASH_KEYR = FLASH_KEY1;
+        FLASH_KEYR = FLASH_KEY2;
+    }
+    while (FLASH_SR & FLASH_SR_BSY) {
+    }
+    FLASH_SR = FLASH_SR_ERRORS | FLASH_SR_EOP;
+}
+
+static bool finish(void)
+{
+    while (FLASH_SR & FLASH_SR_BSY) {
+    }
+    const bool ok = (FLASH_SR & FLASH_SR_ERRORS) == 0U;
+    FLASH_SR = FLASH_SR_ERRORS | FLASH_SR_EOP;
+    FLASH_CR = FLASH_CR_LOCK;
+    flush_caches();
+    return ok;
+}
+
+void hal_flash_sector(uint32_t addr, uint32_t* start, uint32_t* end)
+{
+    *start = addr & ~(MUBL_FLASH_PAGE - 1U);
+    *end = *start + MUBL_FLASH_PAGE;
+}
+
+bool hal_flash_erase(uint32_t start)
+{
+    if (start < MUBL_APP_BASE || start % MUBL_FLASH_PAGE != 0U) return false;
+    const uint32_t off = start - MUBL_FLASH_BASE;
+    uint32_t bker = 0U, pnb = off / MUBL_FLASH_PAGE;
+#if MUBL_G4_BANK_SIZE
+    if (off >= MUBL_G4_BANK_SIZE) {
+        bker = FLASH_CR_BKER;
+        pnb = (off - MUBL_G4_BANK_SIZE) / MUBL_FLASH_PAGE;
+    }
+#endif
+    unlock();
+    FLASH_CR = FLASH_CR_PER | bker | (pnb << FLASH_CR_PNB_POS);
+    FLASH_CR |= FLASH_CR_STRT;
+    return finish();
+}
+
+bool hal_flash_program(uint32_t addr, const uint8_t* data)
+{
+    if (addr < MUBL_APP_BASE || (addr & 7U) != 0U) return false;
+    unlock();
+    FLASH_CR = FLASH_CR_PG;
+    volatile uint32_t* dst = (volatile uint32_t*)(uintptr_t)addr;
+    dst[0] = mubl_get32(data);
+    dst[1] = mubl_get32(data + 4U);
+    __asm volatile("dsb" ::: "memory");
+    return finish();
+}
+
 #elif MUBL_FAMILY == MUBL_FAMILY_H7
 
 MUBL_STATIC_ASSERT(MUBL_FLASH_GRANULE == 32, "H7 programs 256-bit flash words");
