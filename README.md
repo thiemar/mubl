@@ -12,9 +12,9 @@ Status: everything above the register level is tested on a host simulation (290 
 ArduPilot's `uploader.py` over a UART and over simulated USB, sfwa-dronecan's `FirmwareUpdater`,
 Spektrum's reference SRXL2 code, µCAN's USB driver tests, power loss injected at every flash
 operation of an update, and sanitizer-checked fuzzing of all four links).  The STM32 code builds for every example board and its register definitions are
-checked against ST's CMSIS headers.  **On hardware, only USB on two H7 boards has run so far**: the
-STM32H735G-DK (`h735g-dk`) and a TBS Lucid H7 (`tbs-lucid-h7`), which boots stock ArduCopter (see
-[Hardware tests](#hardware-tests)); DroneCAN, the UART links and the F0/F3/F4/G4 parts have not.
+checked against ST's CMSIS headers.  **On hardware, only USB on two H7 boards and one G4 board has run so far**: the
+STM32H735G-DK (`h735g-dk`), a TBS Lucid H7 (`tbs-lucid-h7`, which boots stock ArduCopter), and a
+Mateksys mR24-30 (`matek-mr24-30`; see [Hardware tests](#hardware-tests)); DroneCAN, the UART links and the F0/F3/F4 parts have not.
 
 ## Contents
 
@@ -309,7 +309,7 @@ the PATH (`CROSS=` to choose).  Builds use LTO, `-Os`, no C library, and `-Werro
 
 ## Bring-up on a new board
 
-Only USB on `h735g-dk` and `tbs-lucid-h7` has run on hardware so far, so on other boards check these in order the first time:
+Only USB on `h735g-dk`, `tbs-lucid-h7` and `matek-mr24-30` has run on hardware so far, so on other boards check these in order the first time:
 
 1. Flash the bootloader alone: `st-flash write build/<board>/mubl.bin 0x08000000` (or
    `STM32_Programmer_CLI -c port=SWD -w build/<board>/mubl.bin 0x08000000`).  With no application it
@@ -337,14 +337,14 @@ call-graph output plus an exception frame; it is an upper bound.
 | --- | --- | ---: | ---: | ---: |
 | f042-can | DroneCAN | 7,468 B | 1,656 B | 388 B |
 | f042-node | DroneCAN, SRXL2, serial (no LogMessage) | 11,576 B | 2,136 B | 444 B |
-| f042-usb | USB | 7,804 B | 840 B | 316 B |
-| f042-usb | USB, DroneCAN | 12,488 B | 2,176 B | 388 B |
-| f042-node | all four | 15,244 B | 2,672 B | 444 B |
+| f042-usb | USB | 7,840 B | 840 B | 316 B |
+| f042-usb | USB, DroneCAN | 12,524 B | 2,176 B | 388 B |
+| f042-node | all four | 15,284 B | 2,672 B | 444 B |
 | f303-node | DroneCAN, serial, SRXL2 | 12,292 B | 2,144 B | 412 B |
-| f303-usb | USB, serial, SRXL2 | 10,900 B | 1,332 B | 412 B |
+| f303-usb | USB, serial, SRXL2 | 10,924 B | 1,332 B | 412 B |
 | f405-node | all four | 16,228 B | 2,672 B | 412 B |
-| g474-node | all four (CAN FD) | 16,604 B | 2,688 B | 816 B |
-| matek-mr24-30 | USB, serial | 9,868 B | 1,168 B | 332 B |
+| g474-node | all four (CAN FD) | 16,636 B | 2,688 B | 816 B |
+| matek-mr24-30 | USB, serial | 9,852 B | 1,168 B | 332 B |
 | h743-node | all four | 16,504 B | 2,720 B | 432 B |
 | h735-node | USB, DroneCAN (CAN FD), serial | 15,488 B | 2,576 B | 816 B |
 | h735g-dk | USB | 8,688 B | 896 B | 308 B |
@@ -411,9 +411,17 @@ ROM DFU loader (BOOT button held at plug-in) and started from it:
   `uploader.py` in 24 s and starts: it enumerates as ArduPilot's TBS_LUCID_H7 and sends heartbeats
   and AUTOPILOT_VERSION (4.7.0, board 5250), with the parameters in sectors 14-15 untouched.
 
+Run on a Mateksys mR24-30 (`matek-mr24-30`, STM32G431KB) on 2026-11-28, written through ST's ROM
+DFU loader and started from it:
+
+- USB FS enumerates over HSI48 + CRS as "Matek mR24-30-BL" (0483:5740, serial number = unique ID)
+  and stays while connected;
+- `uploader.py --identify` reports protocol 5, board 6431, 108 KiB (110,592 B, top 4 KiB config
+  reserved) and STM32G431 rev 0.
+
 ## Limitations
 
-- On hardware so far only USB on the STM32H735G-DK and a TBS Lucid H7; first bring-up elsewhere
+- On hardware so far only USB on the STM32H735G-DK, a TBS Lucid H7 and a Mateksys mR24-30; first bring-up elsewhere
   should watch clocks, CAN bit timing and the H7 supply.
 - One CAN interface; no redundant interfaces.  DroneCAN only (no Cyphal).
 - USB: no VBUS sensing (a suspended host counts as gone); full speed only; the device always

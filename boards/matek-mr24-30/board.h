@@ -8,7 +8,9 @@
  *   0x0801F000 - 0x0801FFFF (  4 KiB): persistent application config (never erased by updates)
  *
  * Links:
- *   - USB FS CDC-ACM on PA11/PA12 solder pads (HSI48 trimmed by CRS, internal D+ pull-up).
+ *   - USB FS CDC-ACM on USB-C / PA11-PA12 (HSI48 trimmed by CRS, internal D+ pull-up).
+ *     MUBL_USB_STAY is enabled so the bootloader always stays whenever a USB host is connected
+ *     until told to BOOT or disconnected.
  *   - Serial bootloader protocol on USART1 (PA9 TX / PA10 RX, AF7), the primary telemetry header.
  *
  * Safety outputs held while the bootloader runs: SX1281 CS high (PA4), PA TX_EN low (PB7),
@@ -30,6 +32,15 @@
 
 #ifndef MUBL_USB
 #define MUBL_USB 1
+#endif
+#ifndef MUBL_USB_STAY
+#define MUBL_USB_STAY 1                             /* always stay while a USB host is connected */
+#endif
+#ifndef MUBL_BOOT_DELAY_MS
+#define MUBL_BOOT_DELAY_MS 2000                     /* allow slow USB hubs to reset/enumerate before booting */
+#endif
+#ifndef MUBL_USB_GONE_MS
+#define MUBL_USB_GONE_MS 1000
 #endif
 #ifndef MUBL_SERIAL
 #define MUBL_SERIAL 1

@@ -26,6 +26,7 @@ static bool wait_set(volatile uint32_t* reg, uint32_t mask, uint32_t timeout)
     return true;
 }
 
+#if MUBL_FAMILY != MUBL_FAMILY_G4 || MUBL_DRONECAN
 static bool start_hse(void)
 {
     if (MUBL_HSE_HZ == 0) return false;
@@ -35,6 +36,7 @@ static bool start_hse(void)
     RCC_CR &= ~(RCC_CR_HSEON | RCC_CR_HSEBYP);
     return false;
 }
+#endif
 
 #if MUBL_FAMILY == MUBL_FAMILY_F0 || MUBL_FAMILY == MUBL_FAMILY_F3
 
@@ -233,7 +235,9 @@ void stm32_clock_init(void)
     (void)RCC_APB1ENR1;
     PWR_CR3 |= PWR_CR3_UCPD_DBDIS;
     RCC_APB1ENR1 &= ~RCC_APB1ENR1_PWREN;
+#if MUBL_DRONECAN
     (void)start_hse();                              /* FDCAN's kernel clock */
+#endif
     stm32_sysclk = stm32_pclk1 = stm32_pclk2 = 16000000U;
 }
 
@@ -254,6 +258,7 @@ bool stm32_usb_clock(bool on)
         if (!wait_set(&RCC_CRRCR, RCC_CRRCR_HSI48RDY, HSE_TIMEOUT)) return false;
         RCC_CCIPR &= ~(3U << RCC_CCIPR_CLK48SEL_POS);    /* 00: HSI48 */
         RCC_APB1ENR1 |= CRS_BIT;
+        (void)RCC_APB1ENR1;
         CRS_CFGR = (CRS_CFGR & ~(3U << CRS_CFGR_SYNCSRC_POS)) | (CRS_SYNC_USB << CRS_CFGR_SYNCSRC_POS);
         CRS_CR |= CRS_CR_AUTOTRIMEN | CRS_CR_CEN;
         return true;
