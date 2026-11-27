@@ -18,7 +18,13 @@ void SysTick_Handler(void);
 void Default_Handler(void);
 
 __attribute__((section(".isr_vector"), used)) static void (*const vectors[16])(void) = {
-    _estack, Reset_Handler, Default_Handler, HardFault_Handler,
+    _estack, Reset_Handler,
+#if MUBL_FAMILY == MUBL_FAMILY_G4
+    HardFault_Handler,   /* STM32G4 raises NMI on a double-bit flash ECC error */
+#else
+    Default_Handler,
+#endif
+    HardFault_Handler,
     Default_Handler, HardFault_Handler, Default_Handler, 0, 0, 0, 0,
     Default_Handler, Default_Handler, 0, Default_Handler, SysTick_Handler,
 };
@@ -111,9 +117,13 @@ __attribute__((used)) void mubl_fault(uint32_t* frame)
         frame[7] = (frame[7] & (1U << 9)) | (1U << 24);
         SCB_CFSR = SCB_CFSR;                                        /* write-one-to-clear */
         SCB_HFSR = SCB_HFSR;
+#if MUBL_FAMILY == MUBL_FAMILY_G4
+        FLASH_ECCR |= FLASH_ECCR_ECCD;                              /* clear double-bit ECC flag */
+#else
         FLASH_CCR(0) = FLASH_CCR_ALL;
 #if MUBL_APP_BASE + MUBL_APP_SIZE > MUBL_FLASH_BASE + FLASH_BANK_SIZE
         FLASH_CCR(1) = FLASH_CCR_ALL;
+#endif
 #endif
         return;
     }

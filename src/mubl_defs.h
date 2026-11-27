@@ -10,6 +10,7 @@
 #define MUBL_FAMILY_F0 1        /* STM32F0: Cortex-M0, bxCAN, USART v2, 1-2 KiB pages, half-word programming */
 #define MUBL_FAMILY_F3 3        /* STM32F3: Cortex-M4, bxCAN, USART v2, 2 KiB pages, half-word programming */
 #define MUBL_FAMILY_F4 4        /* STM32F4: Cortex-M4, bxCAN, USART v1, mixed sectors, word programming */
+#define MUBL_FAMILY_G4 5        /* STM32G4: Cortex-M4, FDCAN, USART v2, 2-4 KiB pages, 64-bit ECC double words */
 #define MUBL_FAMILY_H7 7        /* STM32H7: Cortex-M7, FDCAN, USART v2, 128 KiB sectors, 256-bit ECC words */
 
 /* Links.  A board lists the ones it has, highest priority first, in MUBL_LINK_PRIORITY. */

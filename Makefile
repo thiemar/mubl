@@ -14,6 +14,7 @@ FRAME := $(if $(filter 1,$(CAN_FD)),fd,classic)
 CPU_f0 := cortex-m0
 CPU_f3 := cortex-m4
 CPU_f4 := cortex-m4
+CPU_g4 := cortex-m4
 CPU_h7 := cortex-m7
 CPU := $(CPU_$(FAMILY))
 

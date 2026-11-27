@@ -1,0 +1,2 @@
+FAMILY := g4
+CAN_FD := 1

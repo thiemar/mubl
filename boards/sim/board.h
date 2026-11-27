@@ -3,6 +3,7 @@
  *   0  STM32F0-like: 1 KiB pages, half-word programming, raw images accepted
  *   1  STM32F4-like: 16/64/128 KiB sectors, word programming
  *   2  STM32H7-like: 128 KiB sectors, 32-byte ECC flash words
+ *   3  STM32G4-like: 2 KiB pages, 8-byte ECC double words
  * Tests rebuild the library with other -D settings (priority, exclusive links, ...).
  */
 #define MUBL_SIM 1
@@ -33,6 +34,12 @@
 #define MUBL_FLASH_ECC 0
 #define SIM_FLASH_SIZE (512U * 1024U)
 #define MUBL_BL_SIZE (16 * 1024)
+#elif SIM_GEOMETRY == 3
+#define MUBL_FLASH_GRANULE 8
+#define MUBL_FLASH_ECC 1
+#define SIM_FLASH_SIZE (256U * 1024U)
+#define SIM_SECTOR 2048U
+#define MUBL_BL_SIZE (16 * 1024)
 #else
 #define MUBL_FLASH_GRANULE 32
 #define MUBL_FLASH_ECC 1
@@ -43,10 +50,14 @@
 
 #define MUBL_APP_SIZE (SIM_FLASH_SIZE - MUBL_BL_SIZE)
 #define MUBL_RAM_BASE 0x20000000
+#ifndef MUBL_RAM_SIZE
 #define MUBL_RAM_SIZE (64 * 1024)
+#endif
 #define MUBL_STACK_RAM {0x10000000, 0x10002000}   /* an 8 KiB CCM-like bank */
 
+#ifndef MUBL_BOARD_ID
 #define MUBL_BOARD_ID 9999
+#endif
 #define MUBL_BOARD_NAME "org.sfwa.mubl.sim"
 
 #ifndef MUBL_DRONECAN

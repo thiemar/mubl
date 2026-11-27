@@ -112,11 +112,25 @@
 #define CAN_RIR_RTR (1U << 1)
 #define CAN_RIR_IDE (1U << 2)
 
-/* ---- FDCAN (H7) --------------------------------------------------------------------------- */
+/* ---- FDCAN (H7, G4) ----------------------------------------------------------------------- */
 
+#define FDCAN_DBTP 0x00CU
 #define FDCAN_CCCR 0x018U
 #define FDCAN_NBTP 0x01CU
 #define FDCAN_PSR 0x044U
+#define FDCAN_TDCR 0x048U
+#define FDCAN_DBTP_TDC (1U << 23)
+#if MUBL_FAMILY == MUBL_FAMILY_G4
+/* STM32G4 FDCAN (RM0440 §44): fixed message RAM layout, compact register map. */
+#define FDCAN_RXGFC 0x080U
+#define FDCAN_XIDAM 0x084U
+#define FDCAN_RXF0S 0x090U
+#define FDCAN_RXF0A 0x094U
+#define FDCAN_TXBC 0x0C0U
+#define FDCAN_TXFQS 0x0C4U
+#define FDCAN_TXBAR 0x0CCU
+#define FDCAN_TXBCR 0x0D0U
+#else
 #define FDCAN_GFC 0x080U
 #define FDCAN_SIDFC 0x084U
 #define FDCAN_XIDFC 0x088U
@@ -130,9 +144,7 @@
 #define FDCAN_TXESC 0x0C8U
 #define FDCAN_TXBAR 0x0D0U
 #define FDCAN_TXBCR 0x0D4U
-#define FDCAN_DBTP 0x00CU
-#define FDCAN_TDCR 0x048U
-#define FDCAN_DBTP_TDC (1U << 23)
+#endif
 
 #define FDCAN_CCCR_INIT (1U << 0)
 #define FDCAN_CCCR_CCE (1U << 1)
@@ -169,6 +181,8 @@
 #include "family_f3.h"
 #elif MUBL_FAMILY == MUBL_FAMILY_F4
 #include "family_f4.h"
+#elif MUBL_FAMILY == MUBL_FAMILY_G4
+#include "family_g4.h"
 #elif MUBL_FAMILY == MUBL_FAMILY_H7
 #include "family_h7.h"
 #else

@@ -380,6 +380,19 @@ class UpdateH7CrcUnit(UpdateH7):
     defines = {'MUBL_HW_CRC32': 1}
 
 
+class UpdateG4(Update):
+    geometry = 3
+
+
+class UpdateG4RawImages(UpdateG4):
+    defines = {'MUBL_RAW_IMAGES': 1}
+    image_fmt = 'raw'
+
+
+class UpdateG4CrcUnit(UpdateG4):
+    defines = {'MUBL_HW_CRC32': 1}
+
+
 if __name__ == '__main__':
     unittest.main()
 
