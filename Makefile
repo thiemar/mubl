@@ -37,12 +37,20 @@ SRCS := src/main.c src/update.c src/image.c src/handoff.c src/crc.c src/util.c s
 	src/dronecan/$(FRAME)/dronecan.c
 OBJS := $(patsubst %.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all clean all-boards test test-fast sizes regcheck
+.PHONY: all clean all-boards test test-fast sizes regcheck FORCE
 
 all: $(BUILD)/mubl.bin $(BUILD)/mubl.hex
 	@$(SIZE) $(BUILD)/mubl.elf
 
-$(BUILD)/mubl.ld: ld/mubl.ld.S $(BOARD_DIR)/board.h src/mubl_config.h src/mubl_defs.h
+# The board directory $(BUILD) was built for. The .d files name the previous board's board.h, so
+# when BOARD_DIR changes for the same BUILD this file changes and everything is rebuilt.
+$(BUILD)/board-dir: FORCE
+	@mkdir -p $(@D)
+	@echo '$(abspath $(BOARD_DIR))' | cmp -s - $@ || echo '$(abspath $(BOARD_DIR))' > $@
+
+$(OBJS): $(BUILD)/board-dir
+
+$(BUILD)/mubl.ld: ld/mubl.ld.S $(BOARD_DIR)/board.h src/mubl_config.h src/mubl_defs.h $(BUILD)/board-dir
 	@mkdir -p $(@D)
 	@$(CC) -E -P -x c -I$(BOARD_DIR) -Isrc $(EXTRA_CFLAGS) $< -o $@
 
