@@ -239,6 +239,9 @@
 #ifndef MUBL_DC_HOLD_ON_GETNODEINFO
 #define MUBL_DC_HOLD_ON_GETNODEINFO 0 /* 1: a GetNodeInfo request keeps the bootloader running */
 #endif
+#ifndef MUBL_DC_WAIT_ALLOC
+#define MUBL_DC_WAIT_ALLOC 0          /* 1: do not boot the application until DroneCAN has a node ID */
+#endif
 #ifndef MUBL_DC_LOG
 #define MUBL_DC_LOG 1                 /* uavcan.protocol.debug.LogMessage on update start/end */
 #endif

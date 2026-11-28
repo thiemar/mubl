@@ -279,6 +279,9 @@ static void set_node_id(uint8_t id, uint32_t now)
     dc_tiny_init(&d.tiny, id, d.rx, sizeof d.rx);
     hal_can_filter(id);
     mubl_session()->can_node_id = id;
+#if MUBL_DC_WAIT_ALLOC
+    mubl_wait_alloc(false);
+#endif
     const mubl_request_t* req = mubl_request();
     if (req->link == LINK && req->can_server_node_id != 0U && req->path_len != 0U) {
         d.server = req->can_server_node_id;
@@ -439,6 +442,9 @@ void dronecan_start(void)
         d.state = AUTOBAUD;
         listen_at(0, now);
     }
+#if MUBL_DC_WAIT_ALLOC
+    if (d.state != READY) mubl_wait_alloc(true);
+#endif
 }
 
 void dronecan_stop(void)
@@ -446,6 +452,9 @@ void dronecan_stop(void)
     if (d.updating) update_abort(LINK);
     d.updating = 0;
     d.state = OFF;
+#if MUBL_DC_WAIT_ALLOC
+    mubl_wait_alloc(false);
+#endif
     hal_can_stop();
 }
 

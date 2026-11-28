@@ -203,7 +203,7 @@ void mubl_detected(uint8_t link)
 void mubl_hold(uint8_t link)
 {
     m.session.link = link;
-    if (m.stay == MUBL_STAY_NO) m.stay = MUBL_STAY_HOST;
+    if (m.stay == MUBL_STAY_NO || m.stay == MUBL_STAY_ALLOC) m.stay = MUBL_STAY_HOST;
 }
 
 void mubl_usb_host(bool present)
@@ -212,6 +212,16 @@ void mubl_usb_host(bool present)
         m.stay = MUBL_STAY_USB;
     } else if (!present && m.stay == MUBL_STAY_USB) {
         m.stay = MUBL_STAY_NO;               /* boots now if the boot delay has passed */
+    }
+}
+
+void mubl_wait_alloc(bool waiting)
+{
+    if (waiting && m.stay == MUBL_STAY_NO) {
+        m.stay = MUBL_STAY_ALLOC;
+    } else if (!waiting && m.stay == MUBL_STAY_ALLOC) {
+        m.stay = MUBL_STAY_NO;
+        m.deadline = hal_millis() + MUBL_BOOT_DELAY_MS;
     }
 }
 

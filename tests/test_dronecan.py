@@ -12,8 +12,8 @@ import tempfile
 import unittest
 
 from clients import OK, SerialClient
-from sim import (APP_BAD_BOARD, APP_OK, LINK_DRONECAN, ROOT, STATE_APP, STATE_BOOTLOADER, Sim, make_image,
-                 mubl_image)
+from sim import (APP_BAD_BOARD, APP_OK, LINK_DRONECAN, ROOT, STATE_APP, STATE_BOOTLOADER, STAY_ALLOC, Sim,
+                 make_image, mubl_image)
 
 DC = os.environ.get('SFWA_DRONECAN', os.path.join(ROOT, '..', 'dronecan'))
 sys.path.insert(0, os.path.join(DC, 'python'))
@@ -252,6 +252,55 @@ class DroneCAN(unittest.TestCase):
 
 class DroneCANH7(DroneCAN):
     geometry = 2
+
+
+@unittest.skipIf(dronecan is None, 'sfwa-dronecan not available')
+class DroneCANWaitAlloc(DroneCAN):
+    def setUp(self):
+        self.sim = Sim(self.geometry, defines={'MUBL_DC_WAIT_ALLOC': 1}).fresh()
+        self.clock = VirtualClock()
+        self.bus = VirtualBus(self.clock)
+        self.sim.set_time(int(self.clock() * 1000))
+        self.c = CNodeLibrary(self.bus, self.sim.path, 'mubl')
+        self.tmp = tempfile.mkdtemp()
+        self.closers = []
+
+    def test_waits_for_allocation_then_boots(self):
+        img = make_image(self.sim, size=20000, seed=15)
+        self.sim.load(img)
+        self.sim.can_bus_bitrate(500000)
+        self.sim.boot()
+        # No bus traffic / allocator: must stay in bootloader past boot delay.
+        self.assertFalse(self.run_until(lambda: self.sim.state() != STATE_BOOTLOADER, 4, []))
+        self.assertEqual(self.sim.stay_reason(), STAY_ALLOC)
+        self.assertEqual(self.sim.node_id(), 0)
+
+        # Allocator comes online later: autobaud + allocation succeed, then app boots after boot delay.
+        s = self.server()
+        self.assertTrue(self.run_until(lambda: self.sim.node_id() != 0, 15, [s]))
+        nid = self.sim.node_id()
+        # Still in bootloader during the post-allocation boot delay window.
+        self.assertEqual(self.sim.state(), STATE_BOOTLOADER)
+        self.assertTrue(self.run_until(lambda: nid in self.status, 0.5, [s]))
+        self.assertTrue(self.run_until(lambda: self.sim.state() == STATE_APP, 2, [s]))
+        h = self.sim.read_handoff()
+        self.assertEqual((h['node_id'], h['bitrate'], h['link']), (nid, 500000, LINK_DRONECAN))
+
+    def test_update_during_post_alloc_window(self):
+        self.sim.app_emulation(1)
+        old_img = make_image(self.sim, size=20000, seed=16)
+        new_img = make_image(self.sim, size=24000, seed=17)
+        self.sim.load(old_img)
+        self.sim.boot()
+        s = self.server(new_img)
+        self.assertTrue(self.run_until(lambda: self.sim.node_id() != 0, 10, [s]))
+        nid = self.sim.node_id()
+        req = dronecan.uavcan.protocol.file.BeginFirmwareUpdate.Request(
+            source_node_id=127, image_file_remote_path=dronecan.uavcan.protocol.file.Path(path='app.bin'))
+        s.request(req, nid, lambda e: None)
+        self.assertTrue(self.run_until(lambda: self.sim.state() == STATE_APP, 30, [s]))
+        self.assertEqual(self.sim.flash(0, len(new_img)), new_img)
+        self.assertEqual(self.sim.read_handoff()['node_id'], nid)
 
 
 if __name__ == '__main__':
