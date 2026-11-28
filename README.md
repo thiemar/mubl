@@ -282,7 +282,11 @@ single-wire half-duplex port), `MUBL_SERIAL_PORT`, `MUBL_SRXL2_PORT`.  H7 boards
 `MUBL_RAM_BASE`/`SIZE` list it in `MUBL_STACK_RAM` if an application may put its stack there.  Pins are `MUBL_PIN('A', 11, 4)`:
 port, number, alternate function.  Optional pins: `MUBL_LED_PIN`, `MUBL_HOLD_PIN`, and
 `MUBL_OUTPUT_PINS`, outputs held at a level while the bootloader runs (chip selects, power
-switches: `tbs-lucid-h7` keeps its VTX supplies off, as ArduPilot's bootloader does).
+switches: `tbs-lucid-h7` keeps its VTX supplies off, as ArduPilot's bootloader does), and
+`MUBL_CAN_TX_OPEN_DRAIN` for a CAN TX pin that must not be driven high.
+
+A board can also live in the application's repository: `make BOARD=<name> BOARD_DIR=<dir>`
+builds the `board.h` and `board.mk` in `<dir>` (into `build/<name>`, or `BUILD=`).
 
 ## Adding a part
 

@@ -1,5 +1,8 @@
 # µBL.  make BOARD=f303-node | make all-boards | make test | make sizes | make regcheck
+# A board kept outside boards/ (in the application's repository): BOARD names it, BOARD_DIR points
+# at its board.h and board.mk.
 BOARD ?= f303-node
+BOARD_DIR ?= boards/$(BOARD)
 TOOLCHAIN ?= $(wildcard $(CURDIR)/../toolchains/arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi/bin)
 CROSS ?= $(if $(TOOLCHAIN),$(TOOLCHAIN)/,)arm-none-eabi-
 CC := $(CROSS)gcc
@@ -8,7 +11,7 @@ SIZE := $(CROSS)size
 PYTHON ?= python3
 BUILD ?= build/$(BOARD)
 
--include boards/$(BOARD)/board.mk
+-include $(BOARD_DIR)/board.mk
 CAN_FD ?= 0
 FRAME := $(if $(filter 1,$(CAN_FD)),fd,classic)
 CPU_f0 := cortex-m0
@@ -18,7 +21,7 @@ CPU_g4 := cortex-m4
 CPU_h7 := cortex-m7
 CPU := $(CPU_$(FAMILY))
 
-INCLUDES := -Iboards/$(BOARD) -Isrc -Isrc/hal/stm32 -Isrc/dronecan/$(FRAME)
+INCLUDES := -I$(BOARD_DIR) -Isrc -Isrc/hal/stm32 -Isrc/dronecan/$(FRAME)
 LTO ?= -flto
 CFLAGS := -mcpu=$(CPU) -mthumb -mfloat-abi=soft -Os -g $(LTO) -std=c11 -ffreestanding -fno-common \
 	-ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns -fstack-usage \
@@ -39,9 +42,9 @@ OBJS := $(patsubst %.c,$(BUILD)/%.o,$(SRCS))
 all: $(BUILD)/mubl.bin $(BUILD)/mubl.hex
 	@$(SIZE) $(BUILD)/mubl.elf
 
-$(BUILD)/mubl.ld: ld/mubl.ld.S boards/$(BOARD)/board.h src/mubl_config.h src/mubl_defs.h
+$(BUILD)/mubl.ld: ld/mubl.ld.S $(BOARD_DIR)/board.h src/mubl_config.h src/mubl_defs.h
 	@mkdir -p $(@D)
-	@$(CC) -E -P -x c -Iboards/$(BOARD) -Isrc $(EXTRA_CFLAGS) $< -o $@
+	@$(CC) -E -P -x c -I$(BOARD_DIR) -Isrc $(EXTRA_CFLAGS) $< -o $@
 
 # Each object depends on the headers it includes (the compiler's .d files: board.h, the selected
 # frame's generated dronecan.h, ...); before the first build there are none and everything compiles.

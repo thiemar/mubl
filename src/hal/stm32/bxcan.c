@@ -55,7 +55,7 @@ bool hal_can_start(uint32_t bitrate, bool listen_only)
     CAN_RSTR |= CAN_BIT;
     CAN_RSTR &= ~CAN_BIT;
     stm32_pin_af(MUBL_CAN_RX_PIN, false, true);
-    stm32_pin_af(MUBL_CAN_TX_PIN, false, false);
+    stm32_pin_af(MUBL_CAN_TX_PIN, MUBL_CAN_TX_OPEN_DRAIN, false);
 #ifdef MUBL_CAN_STANDBY_PIN
     stm32_pin_output(MUBL_CAN_STANDBY_PIN, !MUBL_CAN_STANDBY_LEVEL);
 #endif
