@@ -212,6 +212,9 @@
 #ifndef MUBL_CAN_INSTANCE
 #define MUBL_CAN_INSTANCE 1
 #endif
+#ifndef MUBL_CAN_TX_OPEN_DRAIN
+#define MUBL_CAN_TX_OPEN_DRAIN 0      /* 1: drive TX open drain, for a board that needs it */
+#endif
 #ifndef MUBL_CAN_BITRATE
 #define MUBL_CAN_BITRATE 0            /* 0: detect 1M/500k/250k/125k; otherwise fixed */
 #endif
